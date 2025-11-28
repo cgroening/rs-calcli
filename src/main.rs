@@ -6,8 +6,11 @@ use rustyline::error::ReadlineError;
 use rustyline::Editor;
 use rustyline::history::DefaultHistory;
 
-// https://crates.io/crates/meval
-use meval::eval_str;
+
+// Parser
+mod parser;
+
+use parser::Parser;
 
 
 fn main() {
@@ -19,13 +22,18 @@ fn main() {
     print!("{}", "calcli".blue().bold());
     println!("{}", " – calulator for the command line".bold());
     println!("Enter a mathematical expression to evaluate it or {} for more \
-              information.", "help".italic());
+              information.\n", "help".italic());
+
+    // Initialize parser
+    let mut parser = Parser::new();
 
     // Start repl (read-eval-print loop)
     loop {
         let readline = rl.readline(
-            &format!("{}", "[calcli] > ".to_string().magenta().bold())
+            &format!("{}", ">>> ".to_string().magenta().bold())
         );
+
+
 
         match readline {
             Ok(line) => {
@@ -49,12 +57,12 @@ fn main() {
                 // Add input to history
                 let _ = rl.add_history_entry(input);
 
-                // Evaluate input
-                match eval_str(input) {
+                // Evaluate input with parser
+                match parser.parse(input) {
                     Ok(result) =>
-                        println!("= {}", result.to_string().green().bold()),
+                        println!("= {}", result.green().bold()),
                     Err(e) =>
-                        eprintln!("{}", e.to_string().red().bold()),
+                        eprintln!("{}", e.red().bold()),
                 }
             }
             Err(ReadlineError::Interrupted) => {
