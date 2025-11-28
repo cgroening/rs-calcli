@@ -1,14 +1,7 @@
-use std::sync::{Arc, Mutex};
-
 // https://crates.io/crates/colored
 use colored::Colorize;
 
 // https://crates.io/crates/rustyline
-// use rustyline::error::ReadlineError;
-// use rustyline::Editor;
-// use rustyline::history::DefaultHistory;
-
-
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 use rustyline::history::DefaultHistory;
@@ -18,35 +11,34 @@ use meval::eval_str;
 
 
 fn main() {
-    let mut rl = Editor::<(), DefaultHistory>::new().expect("Konnte rustyline nicht initialisieren");
+    let mut rl = Editor::<(), DefaultHistory>::new().expect(
+        "rustyline could not be initialized"
+    );
 
-
-
-    // println!("Welcome to {} – the calculator for the CLI.", "calcli".blue());
-    print!("{}", "Welcome to ".bold());
+    // Print app name
     print!("{}", "calcli".blue().bold());
-    println!("{}", " – the calulator for the command line".bold());
+    println!("{}", " – calulator for the command line".bold());
     println!("Enter a mathematical expression to evaluate it or {} for more \
               information.", "help".italic());
 
+    // Start repl (read-eval-print loop)
     loop {
-
-        let readline = rl.readline(&format!("{}", "[calcli] > ".to_string().magenta().bold()));
-
-
+        let readline = rl.readline(
+            &format!("{}", "[calcli] > ".to_string().magenta().bold())
+        );
 
         match readline {
             Ok(line) => {
                 let input = line.trim();
 
-                if input.eq_ignore_ascii_case("exit") {
-                    println!("Auf Wiedersehen!");
+                if input.eq_ignore_ascii_case(".q") {
+                    println!("Exiting ...");
                     break;
                 }
 
                 // test
                 if input.contains("XXX") {
-                    println!("XXX netered!");
+                    println!("XXX entered!");
                     continue;
                 }
 
@@ -54,25 +46,28 @@ fn main() {
                     continue;
                 }
 
-                // rl.add_history_entry(input).unwrap_or(());
+                // Add input to history
                 let _ = rl.add_history_entry(input);
-                // rl.add_history_entry(input).unwrap();
 
+                // Evaluate input
                 match eval_str(input) {
-                    Ok(result) => println!("= {}", result.to_string().green().bold()),
-                    Err(e) => eprintln!("{}", e.to_string().red().bold()),
+                    Ok(result) =>
+                        println!("= {}", result.to_string().green().bold()),
+                    Err(e) =>
+                        eprintln!("{}", e.to_string().red().bold()),
                 }
             }
             Err(ReadlineError::Interrupted) => {
-                println!("(CTRL-C) Zum Beenden 'exit' eingeben.");
-                continue;
+                println!("(CTRL-C) Exiting...");
+                break;
+                // continue;
             }
             Err(ReadlineError::Eof) => {
-                println!("\n(CTRL-D) Beendet.");
+                println!("\n(CTRL-D) Exiting...");
                 break;
             }
             Err(err) => {
-                eprintln!("Fehler: {:?}", err);
+                eprintln!("Error: {:?}", err);
                 break;
             }
         }
