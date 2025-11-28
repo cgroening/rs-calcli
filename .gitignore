@@ -1,0 +1,16 @@
+# Mac
+.DS_Store
+**/.DS_Store
+**/*.DS_Store
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Misc
+**/*.log
+log/
+*ignore/
+
+# Build
+/target

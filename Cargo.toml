@@ -1,0 +1,9 @@
+[package]
+name = "calcli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+colored = "3.0.0"
+rustyline = "15.0.0"
+meval = "0.2"
