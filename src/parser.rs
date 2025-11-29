@@ -32,8 +32,11 @@ impl Parser {
             input.to_string()
         };
 
-        // User , as decimal separator, replace with .
+        // Use , as decimal separator, replace with .
         let input = input.replace(',', ".");
+
+        // Replace ; with ,
+        let input = input.replace(';', ",");
 
         // Replace "ans" with previous answer if available
         let parsed_input = if input.contains("ans") {
