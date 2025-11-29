@@ -5,5 +5,5 @@ edition = "2024"
 
 [dependencies]
 colored = "3.0.0"
-rustyline = "15.0.0"
+rustyline = "17.0.2"
 meval = "0.2"
