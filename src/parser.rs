@@ -28,7 +28,7 @@ impl Parser {
             || input.starts_with('*')
             || input.starts_with('/')
         {
-            if let Some(answer) = self.ans {
+            if let Some(_answer) = self.ans {
                 format!("ans{}", input)
             } else {
                 return Err("No previous answer available for 'ans'".to_string());

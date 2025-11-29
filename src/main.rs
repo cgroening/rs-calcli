@@ -6,10 +6,7 @@ use rustyline::error::ReadlineError;
 use rustyline::Editor;
 use rustyline::history::DefaultHistory;
 
-
-// Parser
 mod parser;
-
 use parser::Parser;
 
 
@@ -33,24 +30,26 @@ fn main() {
             &format!("{}", ">>> ".to_string().magenta().bold())
         );
 
-
-
         match readline {
             Ok(line) => {
                 let input = line.trim();
 
+                // Exit on .q
                 if input.eq_ignore_ascii_case(".q") {
                     println!("{}", "Exiting".blue().bold());
                     break;
                 }
 
-                // test
-                // if input.contains("help") {
+                // Handle help command
                 if input == "help" {
-                    println!("{}", "Help information not yet implemented.".yellow().bold());
+                    println!(
+                        "{}",
+                        "Help information not yet implemented.".yellow().bold()
+                    );
                     continue;
                 }
 
+                // Ignore empty input
                 if input.is_empty() {
                     continue;
                 }
@@ -66,8 +65,14 @@ fn main() {
                         eprintln!("{}", e.red().bold()),
                 }
             }
+
+            // Handle CTRL-C and CTRL-D
             Err(ReadlineError::Interrupted) => {
-                println!("{}", "(CTRL-C) Copying result to clipboard not yet implemented.".yellow().bold());
+                println!(
+                    "{}",
+                    "(CTRL-C) Copying result to clipboard not yet implemented."
+                    .yellow().bold()
+                );
                 // TODO: Copy the last result to the clipboard
                 // let result = parser.ans;
                 // ...
