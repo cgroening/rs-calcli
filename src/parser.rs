@@ -1,7 +1,8 @@
 use std::collections::HashMap;
-
+use regex::Regex;
 // https://crates.io/crates/meval
 use meval::eval_str;
+
 
 
 /// Parser for mathematical expressions
@@ -146,7 +147,10 @@ impl Parser {
     /// - `String`: Modified input with variables replaced by their values
     fn replace_vars_in_input(&self, input: &str) -> String {
         self.vars.iter().fold(input.to_string(), |acc, (key, value)| {
-            acc.replace(key, &value.to_string())
+            // Create regex pattern that matches the variable name with word boundaries
+            let pattern = format!(r"\b{}\b", regex::escape(key));
+            let re = Regex::new(&pattern).unwrap();
+            re.replace_all(&acc, value.to_string()).to_string()
         })
     }
 
@@ -178,15 +182,19 @@ impl Parser {
             let var_name = input[..eq_pos].trim();
             let expression = input[eq_pos + 1..].trim();
 
-            // Validate variable name (simple check: non-empty and alphanumeric)
+            // Validate variable name
             if var_name.is_empty() || !var_name.chars().all(
                 |c| c.is_alphanumeric() || c == '_'
             ) {
                 return Err(format!("Invalid variable name: '{}'", var_name));
             }
 
+            // Process expression: replace ans and variables
+            let expression = self.handle_ans_reference(expression);
+            let expression = self.replace_vars_in_input(&expression);
+
             // Evaluate the expression
-            let result = eval_str(expression).map_err(|e| e.to_string())?;
+            let result = eval_str(&expression).map_err(|e| e.to_string())?;
 
             // Save result to variable, update previous answer
             self.vars.insert(var_name.to_string(), result);
