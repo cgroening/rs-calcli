@@ -1,4 +1,4 @@
 - [x] Allow the use of "ans"
+- [x] Allow the definition of variables and their use in expressions
 - [ ] Add keyboard bindings for number of decimals and scientific notation
-- [ ] Allow the definition of variables "var=..."/-> var and the use of it
 - [ ] Include a help command that lists available commands and features
