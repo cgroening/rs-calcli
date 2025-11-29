@@ -40,13 +40,14 @@ fn main() {
                 let input = line.trim();
 
                 if input.eq_ignore_ascii_case(".q") {
-                    println!("Exiting ...");
+                    println!("{}", "Exiting".blue().bold());
                     break;
                 }
 
                 // test
-                if input.contains("XXX") {
-                    println!("XXX entered!");
+                // if input.contains("help") {
+                if input == "help" {
+                    println!("{}", "Help information not yet implemented.".yellow().bold());
                     continue;
                 }
 
@@ -60,18 +61,20 @@ fn main() {
                 // Evaluate input with parser
                 match parser.parse(input) {
                     Ok(result) =>
-                        println!("= {}", result.green().bold()),
+                        println!("{}", result.green().bold()),
                     Err(e) =>
                         eprintln!("{}", e.red().bold()),
                 }
             }
             Err(ReadlineError::Interrupted) => {
-                println!("(CTRL-C) Exiting...");
-                break;
-                // continue;
+                println!("{}", "(CTRL-C) Copying result to clipboard not yet implemented.".yellow().bold());
+                // TODO: Copy the last result to the clipboard
+                // let result = parser.ans;
+                // ...
+                continue;
             }
             Err(ReadlineError::Eof) => {
-                println!("\n(CTRL-D) Exiting...");
+                println!("{}", "\n(CTRL-D) Exiting...".yellow().bold());
                 break;
             }
             Err(err) => {

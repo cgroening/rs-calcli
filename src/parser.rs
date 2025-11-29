@@ -6,7 +6,7 @@ use meval::eval_str;
 
 pub struct Parser {
     /// Previous answer (optional to represent "no previous answer")
-    ans: Option<f64>,
+    pub ans: Option<f64>,
 
     /// Variables saved by the user
     vars: HashMap<String, f64>,
@@ -158,7 +158,7 @@ impl Parser {
         self.ans = Some(result);
 
         // Return result
-        Ok(result.to_string())
+            Ok("= ".to_string() + &result.to_string())
 
     }
 
