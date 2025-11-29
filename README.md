@@ -105,8 +105,9 @@ Use semicolon to separate function arguments:
 - [x] Allow the use of "ans"
 - [x] Allow the definition of variables and their use in expressions
 - [ ] Add keyboard bindings for number of decimals and scientific notation
+- [ ] Add the possibility to set the number of decimals with a command line argument
 - [ ] Include a help command that lists available commands and features
-- [ ] Implement clipboard support for CTRL-C
+- [ ] Implement clipboard support for copying results
 
 ## Dependencies
 
