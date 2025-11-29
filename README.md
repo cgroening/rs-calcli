@@ -2,7 +2,7 @@
 
 A command-line calculator built with Rust, designed for quick mathematical evaluations with support for variables and previous answer references.
 
-![screenshot](screenshots/sample_calculations.png)
+![screenshot](screenshots/sample_calculations_2.png)
 
 ## Features
 
