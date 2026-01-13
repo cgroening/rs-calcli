@@ -34,8 +34,8 @@ fn main() {
             Ok(line) => {
                 let input = line.trim();
 
-                // Exit on .q
-                if input.eq_ignore_ascii_case(".q") {
+                // Exit on :q
+                if input.eq_ignore_ascii_case(":q") {
                     println!("{}", "Exiting".blue().bold());
                     break;
                 }
