@@ -40,7 +40,8 @@ impl Parser {
     ///   or error message
     pub fn parse(&mut self, input: &str) -> Result<String, String> {
         // Parse input step by step
-        let input = self.handle_start_with_operator(input);
+        let input = self.perform_replacements(&input);
+        let input = self.handle_start_with_operator(&input);
         if self.handle_start_with_equal_sign(&input).is_ok() {
             return self.handle_start_with_equal_sign(&input);
         }
@@ -57,6 +58,18 @@ impl Parser {
         self.ans = Some(result);
         Ok("= ".to_string() + &result.to_string())
 
+    }
+
+    /// Method to perfrom replacements like ** with ^ etc.
+    ///
+    /// # Arguments
+    /// - `input`: Mathematical expression as a string
+    ///
+    /// # Returns
+    /// - `String`: Modified input with replacements
+    fn perform_replacements(&self, input: &str) -> String {
+        let input = input.replace("**", "^");
+        input.to_string()
     }
 
     /// Handles the start of the input with an operator
