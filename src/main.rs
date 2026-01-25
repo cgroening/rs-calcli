@@ -41,7 +41,7 @@ fn main() {
                 }
 
                 // Handle help command
-                if input == "help" {
+                if input == ":h" {
                     println!(
                         "{}",
                         "Help information not yet implemented.".yellow().bold()
