@@ -12,5 +12,8 @@
 log/
 *ignore/
 
+# Custom config
+.cargo/config.toml
+
 # Build
 /target
