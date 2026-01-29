@@ -36,10 +36,16 @@ impl CommandHandler {
     ///
     /// # Arguments
     /// - `input`: Command string (e.g., ":q", ":d", ":d5", ":s2")
+    /// - `previous_answer`: Optional previous answer to display with new formatting
     ///
     /// # Returns
     /// - `Result<CommandResult, String>`: Command result or error message
-    pub fn execute_command(&mut self, input: &str) -> Result<CommandResult, String> {
+    pub fn execute_command(&mut self, input: &str, previous_answer: Option<f64>)
+    -> Result<CommandResult, String> {
+        // TODO: Refactor this function to put each command in its own method
+        // (handle_quit, handle_help, handle_set_decimal, handle_set_scientific)
+
+
         // Handle :q (quit)
         if input.eq_ignore_ascii_case(":q") {
             return Ok(CommandResult::Quit);
@@ -62,9 +68,13 @@ impl CommandHandler {
 
             self.display_format = DisplayFormat::Normal;
             self.decimal_places = decimals;
-            return Ok(CommandResult::FormatChanged(
-                format!("Set to normal notation with {} decimal places", decimals)
-            ));
+
+            let mut msg = format!("Set to normal notation with {} decimal places", decimals);
+            if let Some(ans) = previous_answer {
+                msg.push_str(&format!("\n= {}", self.format_number(ans)));
+            }
+
+            return Ok(CommandResult::FormatChanged(msg));
         }
 
         // Handle :s (scientific notation)
@@ -79,9 +89,13 @@ impl CommandHandler {
 
             self.display_format = DisplayFormat::Scientific;
             self.decimal_places = decimals;
-            return Ok(CommandResult::FormatChanged(
-                format!("Set to scientific notation with {} decimal places", decimals)
-            ));
+
+            let mut msg = format!("Set to scientific notation with {} decimal places", decimals);
+            if let Some(ans) = previous_answer {
+                msg.push_str(&format!("\n= {}", self.format_number(ans)));
+            }
+
+            return Ok(CommandResult::FormatChanged(msg));
         }
 
         Err(format!("Unknown command: '{}'", input))
