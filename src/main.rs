@@ -48,7 +48,7 @@ fn main() {
 
                 // Check if input is a command
                 if CommandHandler::is_command(input) {
-                    match cmd_handler.execute_command(input) {
+                    match cmd_handler.execute_command(input, parser.ans) {
                         Ok(CommandResult::Quit) => {
                             println!("{}", "Exiting".blue().bold());
                             break;

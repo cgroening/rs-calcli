@@ -110,14 +110,10 @@ Examples:
 
 >>> :d5
 Set to normal notation with 5 decimal places
-
->>> 1/3
 = 0.33333
 
 >>> :s2
 Set to scientific notation with 2 decimal places
-
->>> 1/3
 = 3.33e-1
 ```
 
