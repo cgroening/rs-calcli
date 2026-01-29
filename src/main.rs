@@ -9,6 +9,9 @@ use rustyline::history::DefaultHistory;
 mod parser;
 use parser::Parser;
 
+mod commands;
+use commands::{CommandHandler, CommandResult};
+
 
 fn main() {
     let mut rl = Editor::<(), DefaultHistory>::new().expect(
@@ -21,8 +24,9 @@ fn main() {
     println!("Enter a mathematical expression to evaluate it or {} for more \
               information.\n", "help".italic());
 
-    // Initialize parser
+    // Initialize parser and command handler
     let mut parser = Parser::new();
+    let mut cmd_handler = CommandHandler::new();
 
     // Start repl (read-eval-print loop)
     loop {
@@ -34,21 +38,6 @@ fn main() {
             Ok(line) => {
                 let input = line.trim();
 
-                // Exit on :q
-                if input.eq_ignore_ascii_case(":q") {
-                    println!("{}", "Exiting".blue().bold());
-                    break;
-                }
-
-                // Handle help command
-                if input == ":h" {
-                    println!(
-                        "{}",
-                        "Help information not yet implemented.".yellow().bold()
-                    );
-                    continue;
-                }
-
                 // Ignore empty input
                 if input.is_empty() {
                     continue;
@@ -57,12 +46,34 @@ fn main() {
                 // Add input to history
                 let _ = rl.add_history_entry(input);
 
-                // Evaluate input with parser
-                match parser.parse(input) {
-                    Ok(result) =>
-                        println!("{}", result.green().bold()),
-                    Err(e) =>
-                        eprintln!("{}", e.red().bold()),
+                // Check if input is a command
+                if CommandHandler::is_command(input) {
+                    match cmd_handler.execute_command(input) {
+                        Ok(CommandResult::Quit) => {
+                            println!("{}", "Exiting".blue().bold());
+                            break;
+                        }
+                        Ok(CommandResult::Help) => {
+                            println!(
+                                "{}",
+                                "Help information not yet implemented.".yellow().bold()
+                            );
+                        }
+                        Ok(CommandResult::FormatChanged(msg)) => {
+                            println!("{}", msg.blue().bold());
+                        }
+                        Err(e) => {
+                            eprintln!("{}", e.red().bold());
+                        }
+                    }
+                } else {
+                    // Evaluate input with parser
+                    match parser.parse(input, &cmd_handler) {
+                        Ok(result) =>
+                            println!("{}", result.green().bold()),
+                        Err(e) =>
+                            eprintln!("{}", e.red().bold()),
+                    }
                 }
             }
 
