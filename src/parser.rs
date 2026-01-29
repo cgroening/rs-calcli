@@ -3,6 +3,8 @@ use regex::Regex;
 // https://crates.io/crates/meval
 use meval::eval_str;
 
+use crate::commands::CommandHandler;
+
 
 
 /// Parser for mathematical expressions
@@ -34,11 +36,12 @@ impl Parser {
     ///
     /// # Arguments
     /// - `input`: Mathematical expression as a string
+    /// - `formatter`: CommandHandler for formatting the output
     ///
     /// # Returns
     /// - `Result<String, String>`: Result of evaluation as a string
     ///   or error message
-    pub fn parse(&mut self, input: &str) -> Result<String, String> {
+    pub fn parse(&mut self, input: &str, formatter: &CommandHandler) -> Result<String, String> {
         // Parse input step by step
         let input = self.perform_replacements(&input);
         let input = self.handle_start_with_operator(&input);
@@ -49,14 +52,14 @@ impl Parser {
         let input = self.handle_ans_reference(&input);
         let input = self.replace_vars_in_input(&input);
 
-        if let Some(var_assignment_result) = self.handle_variable_assignment(&input)? {
+        if let Some(var_assignment_result) = self.handle_variable_assignment(&input, formatter)? {
             return Ok(var_assignment_result);
         }
 
         // Evaluate input with meval, update previous answer and return result
         let result = eval_str(&input).map_err(|e| e.to_string())?;
         self.ans = Some(result);
-        Ok("= ".to_string() + &result.to_string())
+        Ok("= ".to_string() + &formatter.format_number(result))
 
     }
 
@@ -176,6 +179,7 @@ impl Parser {
     ///
     /// # Arguments
     /// - `input`: Mathematical expression as a string
+    /// - `formatter`: CommandHandler for formatting the output
     ///
     /// # Returns
     /// - `Result<Option<String>, String>`: Result of evaluation as a string
@@ -189,7 +193,7 @@ impl Parser {
     /// - Output: Ok(Some("x = 6"))
     ///
     /// If no variable assignment is found, returns Ok(None).
-    fn handle_variable_assignment(&mut self, input: &str)
+    fn handle_variable_assignment(&mut self, input: &str, formatter: &CommandHandler)
     -> Result<Option<String>, String> {
         if let Some(eq_pos) = input.find('=') {
             let var_name = input[..eq_pos].trim();
@@ -214,7 +218,7 @@ impl Parser {
             self.ans = Some(result);
 
             // Return the variable name and result
-            return Ok(Some(format!("{} = {}", var_name, result)));
+            return Ok(Some(format!("{} = {}", var_name, formatter.format_number(result))));
         }
         Ok(None)
     }

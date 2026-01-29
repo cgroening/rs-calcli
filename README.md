@@ -96,15 +96,42 @@ Use semicolon to separate function arguments:
 
 ## Commands
 
-- **`.q`** or **CTRL-D**: Exit the calculator
+### Formatting Commands
+
+- **`:d`**: Set normal notation with 3 decimal places (default)
+- **`:d<n>`**: Set normal notation with custom decimal places (e.g., `:d0`, `:d5`, `:d10`)
+- **`:s`**: Set scientific notation with 3 decimal places (default)
+- **`:s<n>`**: Set scientific notation with custom decimal places (e.g., `:s2`, `:s8`)
+
+Examples:
+```
+>>> 1/3
+= 0.333
+
+>>> :d5
+Set to normal notation with 5 decimal places
+
+>>> 1/3
+= 0.33333
+
+>>> :s2
+Set to scientific notation with 2 decimal places
+
+>>> 1/3
+= 3.33e-1
+```
+
+### Further commands
+
+- **`:q`** or **CTRL-D**: Exit the calculator
 - **CTRL-C**: (Planned) Copy last result to clipboard
-- **`help`**: (Planned) Display help information
+- **`:h`**: (Planned) Display help information
 
 ## Roadmap
 
 - [x] Allow the use of "ans"
 - [x] Allow the definition of variables and their use in expressions
-- [ ] Add keyboard bindings for number of decimals and scientific notation
+- [x] Add keyboard bindings for number of decimals and scientific notation
 - [ ] Add the possibility to set the number of decimals with a command line argument
 - [ ] Include a help command that lists available commands and features
 - [ ] Implement clipboard support for copying results
