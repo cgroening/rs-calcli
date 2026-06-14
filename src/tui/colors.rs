@@ -67,6 +67,7 @@ pub struct Highlight {
     operator: Style,
     number: Style,
     variable: Style,
+    unit: Style,
     paren: Style,
     ans: Style,
     comment: Style,
@@ -87,6 +88,7 @@ impl Highlight {
                 .add_modifier(Modifier::BOLD),
             number: Style::default().fg(parse_color(&theme.number_color)),
             variable: Style::default().fg(parse_color(&theme.variable_color)),
+            unit: Style::default().fg(parse_color(&theme.unit_color)),
             paren: Style::default().add_modifier(Modifier::DIM),
             ans: Style::default()
                 .fg(parse_color(&theme.ans_color))
@@ -106,6 +108,7 @@ impl Highlight {
             TokenKind::Operator => self.operator,
             TokenKind::Number => self.number,
             TokenKind::Variable => self.variable,
+            TokenKind::Unit => self.unit,
             TokenKind::Paren => self.paren,
             TokenKind::Ans => self.ans,
             TokenKind::Comment => self.comment,

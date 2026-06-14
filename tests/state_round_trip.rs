@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use calcli::config::Config;
 use calcli::domain::evaluator::MevalEvaluator;
 use calcli::domain::history::{History, HistoryEntry};
+use calcli::domain::quantity::Quantity;
 use calcli::domain::variables::VariableStore;
 use calcli::service::CalcService;
 use calcli::storage::{StateRepository, TomlStateRepository};
@@ -53,7 +54,7 @@ fn a_session_survives_save_and_reload() {
     assert_eq!(settings.angle_mode, calcli::domain::format::AngleMode::Deg);
 
     // Variables persisted.
-    assert_eq!(loaded.variables.get("answer"), Some(&42.0));
+    assert_eq!(loaded.variables.get("answer").unwrap().value, 42.0);
 
     // History persisted; rebuilding and recomputing reproduces the values.
     let entries = loaded
@@ -61,7 +62,9 @@ fn a_session_survives_save_and_reload() {
         .iter()
         .map(|entry| HistoryEntry {
             input: entry.input.clone(),
-            value: entry.value,
+            value: entry
+                .value
+                .map(|v| Quantity::from_persisted(v, entry.unit.as_deref())),
             error: None,
         })
         .collect();
@@ -69,14 +72,31 @@ fn a_session_survives_save_and_reload() {
         Box::new(MevalEvaluator::new()),
         config.format_settings(),
         History::from_entries(entries, config.max_history),
-        VariableStore::from_pairs(
-            loaded
-                .variables
-                .iter()
-                .map(|(name, value)| (name.clone(), *value)),
-        ),
+        VariableStore::from_pairs(loaded.variables.iter().map(
+            |(name, stored)| {
+                (
+                    name.clone(),
+                    Quantity::from_persisted(
+                        stored.value,
+                        stored.unit.as_deref(),
+                    ),
+                )
+            },
+        )),
     );
     rebuilt.recompute_all();
-    assert_eq!(rebuilt.history().entries()[2].value, Some(43.0));
-    assert_eq!(rebuilt.variables().get("answer"), Some(42.0));
+    assert_eq!(
+        rebuilt.history().entries()[2]
+            .value
+            .clone()
+            .map(|q| q.display_value()),
+        Some(43.0)
+    );
+    assert_eq!(
+        rebuilt
+            .variables()
+            .get("answer")
+            .map(Quantity::display_value),
+        Some(42.0)
+    );
 }

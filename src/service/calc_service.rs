@@ -13,6 +13,8 @@ use crate::domain::format::{
     AngleMode, FormatSettings, Notation, format_display, format_plain,
 };
 use crate::domain::history::{History, HistoryEntry, LineResult};
+use crate::domain::quantity::Quantity;
+use crate::domain::units;
 use crate::domain::variables::VariableStore;
 
 /// Names that may not be used as variables because they collide with the
@@ -23,18 +25,18 @@ const RESERVED_NAMES: &[&str] = &["ans", "pi", "e"];
 #[derive(Debug, Clone, PartialEq)]
 pub struct SubmitOutcome {
     /// The computed value, when the line succeeded.
-    pub value: Option<f64>,
+    pub value: Option<Quantity>,
     /// The error message, when the line failed.
     pub error: Option<String>,
 }
 
 /// A non-mutating live preview of the current input, for typed feedback.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Preview {
     /// Nothing to show (empty input or a `:` command).
     Empty,
     /// The input currently evaluates to this value.
-    Value(f64),
+    Value(Quantity),
     /// The input looks unfinished (still being typed); show no warning.
     Incomplete,
     /// The input looks complete but does not parse; show a warning.
@@ -88,13 +90,16 @@ impl CalcService {
     pub fn submit(&mut self, input: &str) -> SubmitOutcome {
         let ans = self.history.last_value();
         let (value, error) = self.evaluate_line(input, ans);
-        let entry = HistoryEntry {
-            input: input.to_string(),
-            value,
+        let outcome = SubmitOutcome {
+            value: value.clone(),
             error: error.clone(),
         };
-        self.history.push(entry);
-        SubmitOutcome { value, error }
+        self.history.push(HistoryEntry {
+            input: input.to_string(),
+            value,
+            error,
+        });
+        outcome
     }
 
     /// Replaces the input of the entry at `index` and re-evaluates the tail.
@@ -196,13 +201,13 @@ impl CalcService {
         self.recompute(0);
     }
 
-    /// Renders `value` for display (rounded, grouped) — for the `Y` copy.
-    pub fn format_display(&self, value: f64) -> String {
+    /// Renders a quantity for display (rounded, grouped) — for the `Y` copy.
+    pub fn format_display(&self, value: &Quantity) -> String {
         format_display(value, &self.settings)
     }
 
-    /// Renders `value` as a plain, full-precision number — for the `y` copy.
-    pub fn format_plain(&self, value: f64) -> String {
+    /// Renders a quantity as a plain, full-precision value — for the `y` copy.
+    pub fn format_plain(&self, value: &Quantity) -> String {
         format_plain(value, &self.settings)
     }
 
@@ -227,7 +232,7 @@ impl CalcService {
 
     /// Evaluates the input for the preview, reusing the submit pipeline but
     /// reading (not mutating) the variable store.
-    fn preview_value(&self, input: &str) -> Option<f64> {
+    fn preview_value(&self, input: &str) -> Option<Quantity> {
         let ans = self.history.last_value();
         match expression::classify(input) {
             Statement::SaveAns(name) => {
@@ -274,7 +279,11 @@ impl CalcService {
 
     /// Evaluates a single line against the current engine, variables and
     /// settings (used by [`submit`](Self::submit)).
-    fn evaluate_line(&mut self, input: &str, ans: Option<f64>) -> LineResult {
+    fn evaluate_line(
+        &mut self,
+        input: &str,
+        ans: Option<Quantity>,
+    ) -> LineResult {
         evaluate_line(
             self.evaluator.as_ref(),
             &mut self.variables,
@@ -293,7 +302,7 @@ fn evaluate_line(
     variables: &mut VariableStore,
     settings: &FormatSettings,
     input: &str,
-    ans: Option<f64>,
+    ans: Option<Quantity>,
 ) -> LineResult {
     // Strip the inline comment; the full input is kept by the history.
     let code = expression::strip_comment(input);
@@ -318,14 +327,14 @@ fn evaluate_line(
 fn save_ans(
     variables: &mut VariableStore,
     name: &str,
-    ans: Option<f64>,
+    ans: Option<Quantity>,
 ) -> LineResult {
     if let Some(message) = reject_name(name) {
         return (None, Some(message));
     }
     match ans {
         Some(value) => {
-            variables.set(name, value);
+            variables.set(name, value.clone());
             (Some(value), None)
         }
         None => (None, Some("no previous answer to save".to_string())),
@@ -339,33 +348,136 @@ fn assign(
     settings: &FormatSettings,
     name: &str,
     expr: &str,
-    ans: Option<f64>,
+    ans: Option<Quantity>,
 ) -> LineResult {
     if let Some(message) = reject_name(name) {
         return (None, Some(message));
     }
     match eval_expression(evaluator, variables, settings, expr, ans) {
         Ok(value) => {
-            variables.set(name, value);
+            variables.set(name, value.clone());
             (Some(value), None)
         }
         Err(message) => (None, Some(message)),
     }
 }
 
-/// Preprocesses, substitutes `ans`/variables and evaluates `expr`.
+/// The message shown when a line tries to do arithmetic on units (not yet
+/// supported); only conversion via `->` is available.
+const UNIT_ARITHMETIC: &str =
+    "unit arithmetic not supported yet — use -> to convert";
+
+/// Evaluates `expr` into a [`Quantity`]: a conversion (`<source> -> <unit>`), a
+/// quantity (`<number> <unit>`) or a plain dimensionless expression.
 fn eval_expression(
     evaluator: &dyn Evaluator,
     variables: &VariableStore,
     settings: &FormatSettings,
     expr: &str,
-    ans: Option<f64>,
+    ans: Option<Quantity>,
+) -> Result<Quantity, String> {
+    if let Some((source, target)) = split_conversion(expr) {
+        let quantity =
+            eval_source(evaluator, variables, settings, source, ans)?;
+        let unit = units::parse(target.trim())
+            .ok_or_else(|| format!("unknown unit '{}'", target.trim()))?;
+        return quantity.convert_to(unit);
+    }
+    eval_source(evaluator, variables, settings, expr, ans)
+}
+
+/// Splits a conversion `<source> -> <unit>` (or `<source> to <unit>`).
+fn split_conversion(expr: &str) -> Option<(&str, &str)> {
+    if let Some((source, target)) = expr.split_once("->") {
+        return Some((source, target));
+    }
+    expr.split_once(" to ")
+}
+
+/// Evaluates `expr` into a [`Quantity`]: a sole `ans`/variable reference, a
+/// `<number> <unit>` quantity, or a plain dimensionless expression. Arithmetic
+/// mixing units errors with [`UNIT_ARITHMETIC`].
+fn eval_source(
+    evaluator: &dyn Evaluator,
+    variables: &VariableStore,
+    settings: &FormatSettings,
+    expr: &str,
+    ans: Option<Quantity>,
+) -> Result<Quantity, String> {
+    let trimmed = expr.trim();
+    if trimmed == "ans" {
+        return ans.ok_or_else(|| "no previous answer".to_string());
+    }
+    if let Some(quantity) = variables.get(trimmed) {
+        return Ok(quantity.clone());
+    }
+
+    let tokens: Vec<&str> = trimmed.split_whitespace().collect();
+    let unit_count = tokens.iter().filter(|t| units::is_unit(t)).count();
+    if unit_count > 1 {
+        return Err(UNIT_ARITHMETIC.to_string());
+    }
+    if unit_count == 1 {
+        let last = *tokens.last().expect("a token exists");
+        let (number, unit) = match units::parse(last) {
+            Some(unit) if tokens.len() >= 2 => (trim_last_token(trimmed), unit),
+            _ => return Err(UNIT_ARITHMETIC.to_string()),
+        };
+        let value = eval_number(evaluator, variables, settings, number, ans)?;
+        return Ok(Quantity::new(value, unit));
+    }
+
+    let value = eval_number(evaluator, variables, settings, trimmed, ans)?;
+    Ok(Quantity::dimensionless(value))
+}
+
+/// Everything in `expr` before its last whitespace-separated token.
+fn trim_last_token(expr: &str) -> &str {
+    expr.rsplit_once(char::is_whitespace)
+        .map(|(rest, _last)| rest.trim_end())
+        .unwrap_or("")
+}
+
+/// Evaluates a dimensionless numeric expression with meval, substituting `ans`
+/// and dimensionless variables. Referencing a unit-carrying value is arithmetic
+/// with units and errors with [`UNIT_ARITHMETIC`].
+fn eval_number(
+    evaluator: &dyn Evaluator,
+    variables: &VariableStore,
+    settings: &FormatSettings,
+    expr: &str,
+    ans: Option<Quantity>,
 ) -> Result<f64, String> {
     let prepared = expression::preprocess(expr, settings.decimal_separator);
-    let prepared = expression::prepend_ans(&prepared, ans);
-    let mut prepared = expression::substitute_ans(&prepared, ans);
+
+    let ans_has_unit = ans.as_ref().is_some_and(|a| !a.is_dimensionless());
+    let starts_with_operator =
+        prepared.trim_start().starts_with(['+', '-', '*', '/', '^']);
+    if ans_has_unit
+        && (starts_with_operator || expression::references(&prepared, "ans"))
+    {
+        return Err(UNIT_ARITHMETIC.to_string());
+    }
+    let ans_number = ans
+        .as_ref()
+        .filter(|a| a.is_dimensionless())
+        .map(Quantity::display_value);
+
+    let prepared = expression::prepend_ans(&prepared, ans_number);
+    let mut prepared = expression::substitute_ans(&prepared, ans_number);
     for (name, value) in variables.iter() {
-        prepared = expression::substitute_identifier(&prepared, name, *value);
+        if !expression::references(&prepared, name) {
+            continue;
+        }
+        if value.is_dimensionless() {
+            prepared = expression::substitute_identifier(
+                &prepared,
+                name,
+                value.display_value(),
+            );
+        } else {
+            return Err(UNIT_ARITHMETIC.to_string());
+        }
     }
     evaluator
         .eval(&prepared, settings.angle_mode)
@@ -409,15 +521,35 @@ mod tests {
     }
 
     fn value_at(service: &CalcService, index: usize) -> Option<f64> {
-        service.history().entries()[index].value
+        service.history().entries()[index]
+            .value
+            .as_ref()
+            .map(Quantity::display_value)
+    }
+
+    fn last(service: &CalcService) -> Option<f64> {
+        service.history().last_value().map(|q| q.display_value())
+    }
+
+    fn var(service: &CalcService, name: &str) -> Option<f64> {
+        service.variables().get(name).map(Quantity::display_value)
+    }
+
+    fn outval(outcome: &SubmitOutcome) -> Option<f64> {
+        outcome.value.as_ref().map(Quantity::display_value)
+    }
+
+    /// A dimensionless value preview, for the preview assertions.
+    fn val(value: f64) -> Preview {
+        Preview::Value(Quantity::dimensionless(value))
     }
 
     #[test]
     fn submit_evaluates_and_records_history() {
         let mut service = service();
         let outcome = service.submit("2+3");
-        assert_eq!(outcome.value, Some(5.0));
-        assert_eq!(service.history().last_value(), Some(5.0));
+        assert_eq!(outval(&outcome), Some(5.0));
+        assert_eq!(last(&service), Some(5.0));
     }
 
     #[test]
@@ -458,11 +590,11 @@ mod tests {
         let mut service = service();
         service.submit("7");
         service.submit("=x");
-        assert_eq!(service.variables().get("x"), Some(7.0));
+        assert_eq!(var(&service, "x"), Some(7.0));
         service.submit("y = x + 3");
-        assert_eq!(service.variables().get("y"), Some(10.0));
+        assert_eq!(var(&service, "y"), Some(10.0));
         service.submit("y*2");
-        assert_eq!(service.history().last_value(), Some(20.0));
+        assert_eq!(last(&service), Some(20.0));
     }
 
     #[test]
@@ -480,7 +612,7 @@ mod tests {
         let mut service = service();
         let outcome = service.submit("2+");
         assert!(outcome.error.is_some());
-        assert_eq!(service.history().last_value(), None);
+        assert_eq!(last(&service), None);
     }
 
     #[test]
@@ -518,8 +650,8 @@ mod tests {
     fn preview_reports_value_incomplete_and_invalid() {
         let mut service = service();
         service.submit("10");
-        assert_eq!(service.preview("2+3"), Preview::Value(5.0));
-        assert_eq!(service.preview("ans+5"), Preview::Value(15.0));
+        assert_eq!(service.preview("2+3"), val(5.0));
+        assert_eq!(service.preview("ans+5"), val(15.0));
         assert_eq!(service.preview("2+"), Preview::Incomplete);
         assert_eq!(service.preview("2+3)"), Preview::Invalid);
         assert_eq!(service.preview(""), Preview::Empty);
@@ -530,9 +662,9 @@ mod tests {
     fn preview_handles_assignments_without_mutating_state() {
         let mut service = service();
         service.submit("7");
-        assert_eq!(service.preview("x = ans + 3"), Preview::Value(10.0));
+        assert_eq!(service.preview("x = ans + 3"), val(10.0));
         // Previewing must not define the variable or add to the history.
-        assert_eq!(service.variables().get("x"), None);
+        assert!(service.variables().get("x").is_none());
         assert_eq!(service.history().len(), 1);
         // A reserved name is invalid, not a value.
         assert_eq!(service.preview("pi = 3"), Preview::Invalid);
@@ -542,12 +674,12 @@ mod tests {
     fn inline_comments_are_ignored_but_kept_in_history() {
         let mut service = service();
         let outcome = service.submit("2+3 # the sum");
-        assert_eq!(outcome.value, Some(5.0));
+        assert_eq!(outval(&outcome), Some(5.0));
         // The full input, including the comment, is stored.
         assert_eq!(service.history().entries()[0].input, "2+3 # the sum");
         // Comments work on assignments too.
         service.submit("x = 5 # a note");
-        assert_eq!(service.variables().get("x"), Some(5.0));
+        assert_eq!(var(&service, "x"), Some(5.0));
     }
 
     #[test]
@@ -560,7 +692,7 @@ mod tests {
         assert_eq!(service.history().entries()[1].input, "# just a note");
         // The note does not break the `ans` chain.
         service.submit("ans + 1");
-        assert_eq!(service.history().entries()[2].value, Some(6.0));
+        assert_eq!(value_at(&service, 2), Some(6.0));
     }
 
     #[test]
@@ -593,6 +725,53 @@ mod tests {
         let mut service = service();
         service.submit("2");
         assert_eq!(service.preview("# note"), Preview::Empty);
-        assert_eq!(service.preview("ans+3 # sum"), Preview::Value(5.0));
+        assert_eq!(service.preview("ans+3 # sum"), val(5.0));
+    }
+
+    #[test]
+    fn converts_a_quantity_with_the_arrow() {
+        let mut service = service();
+        let outcome = service.submit("123 MPa -> bar");
+        let quantity = outcome.value.unwrap();
+        assert_eq!(quantity.unit_symbol(), Some("bar"));
+        assert!((quantity.display_value() - 1230.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn stores_a_quantity_variable_and_converts_it() {
+        let mut service = service();
+        service.submit("x = 50 kN");
+        assert_eq!(
+            service.variables().get("x").unwrap().unit_symbol(),
+            Some("kN")
+        );
+        let outcome = service.submit("x -> N");
+        let quantity = outcome.value.unwrap();
+        assert_eq!(quantity.unit_symbol(), Some("N"));
+        assert!((quantity.display_value() - 50_000.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn ans_carries_its_unit_into_a_conversion() {
+        let mut service = service();
+        service.submit("2 bar");
+        let outcome = service.submit("ans -> Pa");
+        let quantity = outcome.value.unwrap();
+        assert_eq!(quantity.unit_symbol(), Some("Pa"));
+        assert!((quantity.display_value() - 200_000.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn unit_arithmetic_is_rejected_clearly() {
+        let mut service = service();
+        let outcome = service.submit("20 kN + 300 N");
+        assert!(outcome.error.unwrap().contains("not supported"));
+    }
+
+    #[test]
+    fn an_incompatible_conversion_errors() {
+        let mut service = service();
+        let outcome = service.submit("5 N -> bar");
+        assert!(outcome.error.unwrap().contains("cannot convert"));
     }
 }

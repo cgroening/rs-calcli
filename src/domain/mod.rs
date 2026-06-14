@@ -8,4 +8,6 @@ pub mod expression;
 pub mod format;
 pub mod highlight;
 pub mod history;
+pub mod quantity;
+pub mod units;
 pub mod variables;

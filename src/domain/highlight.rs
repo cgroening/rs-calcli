@@ -7,6 +7,7 @@
 //! [`TokenKind::Plain`] so typing never flashes a colour mid-word.
 
 use crate::domain::expression::is_si_prefix;
+use crate::domain::units;
 use crate::domain::variables::VariableStore;
 
 /// The known built-in function names (mirrors the meval builtins calcli uses).
@@ -35,6 +36,8 @@ pub enum TokenKind {
     Number,
     /// A defined variable name.
     Variable,
+    /// A unit symbol (e.g. `MPa`, `kN`).
+    Unit,
     /// A parenthesis.
     Paren,
     /// The `ans` keyword.
@@ -141,15 +144,18 @@ fn classify_identifier(name: &str, variables: &VariableStore) -> TokenKind {
         TokenKind::Function
     } else if variables.get(name).is_some() {
         TokenKind::Variable
+    } else if units::is_unit(name) {
+        TokenKind::Unit
     } else {
         TokenKind::Plain
     }
 }
 
-/// Classifies a single non-identifier, non-number character.
+/// Classifies a single non-identifier, non-number character. `>` is included so
+/// the conversion arrow `->` colours as an operator.
 fn classify_symbol(c: char) -> TokenKind {
     match c {
-        '+' | '-' | '*' | '/' | '^' | '=' => TokenKind::Operator,
+        '+' | '-' | '*' | '/' | '^' | '=' | '>' => TokenKind::Operator,
         '(' | ')' => TokenKind::Paren,
         _ => TokenKind::Plain,
     }
@@ -158,10 +164,13 @@ fn classify_symbol(c: char) -> TokenKind {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::quantity::Quantity;
 
     fn vars(names: &[&str]) -> VariableStore {
         VariableStore::from_pairs(
-            names.iter().map(|name| (name.to_string(), 1.0)),
+            names
+                .iter()
+                .map(|name| (name.to_string(), Quantity::dimensionless(1.0))),
         )
     }
 
@@ -230,6 +239,22 @@ mod tests {
     }
 
     #[test]
+    fn units_and_the_conversion_arrow_are_highlighted() {
+        assert_eq!(
+            runs("123 MPa -> bar", &vars(&[])),
+            vec![
+                ("123".to_string(), TokenKind::Number),
+                (" ".to_string(), TokenKind::Plain),
+                ("MPa".to_string(), TokenKind::Unit),
+                (" ".to_string(), TokenKind::Plain),
+                ("->".to_string(), TokenKind::Operator),
+                (" ".to_string(), TokenKind::Plain),
+                ("bar".to_string(), TokenKind::Unit),
+            ]
+        );
+    }
+
+    #[test]
     fn ans_keyword_is_distinct() {
         assert_eq!(
             runs("ans/2", &vars(&[])),
@@ -267,12 +292,13 @@ mod tests {
                 ("2".to_string(), TokenKind::Number),
             ]
         );
-        // `5km` is not an SI prefix (the `k` continues into an identifier).
+        // `5km` does not join the prefix (`k` continues into `km`); `km` is a
+        // known unit, so it highlights as one.
         assert_eq!(
             runs("5km", &vars(&[])),
             vec![
                 ("5".to_string(), TokenKind::Number),
-                ("km".to_string(), TokenKind::Plain),
+                ("km".to_string(), TokenKind::Unit),
             ]
         );
     }

@@ -44,7 +44,9 @@ impl StateRepository for TomlStateRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::repository::{PersistedEntry, PersistedSettings};
+    use crate::storage::repository::{
+        PersistedEntry, PersistedSettings, PersistedValue,
+    };
 
     fn temp_path(tag: &str) -> PathBuf {
         let mut path = std::env::temp_dir();
@@ -80,15 +82,30 @@ mod tests {
                 angle_mode: crate::domain::format::AngleMode::Deg,
                 decimal_separator: ",".to_string(),
             }),
-            variables: [("x".to_string(), 42.0)].into_iter().collect(),
+            variables: [(
+                "x".to_string(),
+                PersistedValue {
+                    value: 50.0,
+                    unit: Some("kN".to_string()),
+                },
+            )]
+            .into_iter()
+            .collect(),
             history: vec![
+                PersistedEntry {
+                    input: "123 MPa -> bar".to_string(),
+                    value: Some(1230.0),
+                    unit: Some("bar".to_string()),
+                },
                 PersistedEntry {
                     input: "2+3".to_string(),
                     value: Some(5.0),
+                    unit: None,
                 },
                 PersistedEntry {
                     input: "boom(".to_string(),
                     value: None,
+                    unit: None,
                 },
             ],
         };
@@ -98,9 +115,12 @@ mod tests {
         let _ = fs::remove_file(&path);
 
         assert_eq!(loaded.settings.unwrap().decimals, 5);
-        assert_eq!(loaded.variables.get("x"), Some(&42.0));
-        assert_eq!(loaded.history.len(), 2);
-        assert_eq!(loaded.history[0].value, Some(5.0));
-        assert_eq!(loaded.history[1].value, None);
+        let x = loaded.variables.get("x").unwrap();
+        assert_eq!(x.value, 50.0);
+        assert_eq!(x.unit.as_deref(), Some("kN"));
+        assert_eq!(loaded.history.len(), 3);
+        assert_eq!(loaded.history[0].value, Some(1230.0));
+        assert_eq!(loaded.history[0].unit.as_deref(), Some("bar"));
+        assert_eq!(loaded.history[2].value, None);
     }
 }

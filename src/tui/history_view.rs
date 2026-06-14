@@ -307,7 +307,7 @@ fn result_span(app: &App, entry: &HistoryEntry) -> (String, Style) {
         let text = format!("{} {}", app.warn(), error);
         return (text, Style::default().fg(colors::ERROR));
     }
-    match entry.value {
+    match &entry.value {
         Some(value) => {
             let text = format!("= {}", app.service().format_display(value));
             let style = Style::default()

@@ -109,6 +109,10 @@ power), parentheses, constants `pi`, `e`, and functions such as `sqrt`, `exp`,
 - `=name` — save the previous answer to `name`.
 - `name = expr` — evaluate and store. `ans`, `pi` and `e` are reserved.
 - SI prefixes on numbers: `k M G T m µ u n p` (e.g. `4.7k` → `4700`).
+- Units & conversion: write a quantity as `value unit` (space-separated, e.g.
+  `123 MPa`) and convert with `->` (or `to`): `123 MPa -> bar`, `ans -> psi`,
+  `x = 50 kN` then `x -> N`. `ans` and variables keep their unit. Calculating
+  *with* units (e.g. `20 kN + 300 N`) is not supported yet — see `todo.md`.
 - Comments: everything after `#` is ignored by the calculation but kept in the
   history (e.g. `2*pi*r  # circumference`). A line that is only a comment is
   kept as a note (no result); notes don't break the `ans` chain.

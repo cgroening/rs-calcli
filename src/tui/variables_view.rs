@@ -10,6 +10,7 @@ use ratatui::widgets::{
     ScrollbarOrientation, ScrollbarState,
 };
 
+use crate::domain::quantity::Quantity;
 use crate::tui::App;
 use crate::tui::colors;
 use crate::tui::widgets::{centered_rect, hint_line};
@@ -27,11 +28,11 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(Clear, rect);
     frame.render_widget(block, rect);
 
-    let variables: Vec<(String, f64)> = app
+    let variables: Vec<(String, Quantity)> = app
         .service()
         .variables()
         .iter()
-        .map(|(name, value)| (name.clone(), *value))
+        .map(|(name, value)| (name.clone(), value.clone()))
         .collect();
 
     let list_height = inner.height.saturating_sub(2) as usize;
@@ -71,11 +72,11 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
 /// One variable row: `name = value`, highlighted when selected.
 fn variable_line(
     app: &App,
-    entry: &(String, f64),
+    entry: &(String, Quantity),
     index: usize,
 ) -> Line<'static> {
     let (name, value) = entry;
-    let formatted = app.service().format_display(*value);
+    let formatted = app.service().format_display(value);
     let spans = vec![
         Span::styled(
             format!("{name} "),

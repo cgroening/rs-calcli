@@ -154,6 +154,14 @@ pub fn substitute_identifier(expr: &str, name: &str, value: f64) -> String {
     re.replace_all(expr, format!("({value})")).into_owned()
 }
 
+/// Whether `expr` references the identifier `name` at a word boundary.
+pub fn references(expr: &str, name: &str) -> bool {
+    let pattern = format!(r"\b{}\b", regex::escape(name));
+    Regex::new(&pattern)
+        .map(|re| re.is_match(expr))
+        .unwrap_or(false)
+}
+
 /// Whether `name` is a valid variable name: non-empty `[A-Za-z0-9_]` not
 /// starting with a digit.
 pub fn is_valid_var_name(name: &str) -> bool {

@@ -5,6 +5,7 @@ pub mod repository;
 pub mod toml_state;
 
 pub use repository::{
-    PersistedEntry, PersistedSettings, PersistedState, StateRepository,
+    PersistedEntry, PersistedSettings, PersistedState, PersistedValue,
+    StateRepository,
 };
 pub use toml_state::TomlStateRepository;

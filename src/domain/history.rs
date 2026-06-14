@@ -7,20 +7,22 @@
 //! evaluation is supplied by the caller, keeping this module free of the engine
 //! and variable store.
 
+use crate::domain::quantity::Quantity;
+
 /// One line of history: what was typed and what it evaluated to.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HistoryEntry {
     /// The raw input as typed by the user.
     pub input: String,
-    /// The computed value, or `None` when the line errored.
-    pub value: Option<f64>,
+    /// The computed value (a quantity), or `None` for a note or an error.
+    pub value: Option<Quantity>,
     /// The error message, or `None` when the line succeeded.
     pub error: Option<String>,
 }
 
 impl HistoryEntry {
     /// A successfully evaluated entry.
-    pub fn evaluated(input: String, value: f64) -> Self {
+    pub fn evaluated(input: String, value: Quantity) -> Self {
         HistoryEntry {
             input,
             value: Some(value),
@@ -38,8 +40,8 @@ impl HistoryEntry {
     }
 }
 
-/// The outcome of evaluating one line: a value or an error message.
-pub type LineResult = (Option<f64>, Option<String>);
+/// The outcome of evaluating one line: a value (quantity) or an error message.
+pub type LineResult = (Option<Quantity>, Option<String>);
 
 /// An ordered list of history entries, capped at `max_len` (oldest dropped).
 #[derive(Debug, Clone, Default)]
@@ -84,8 +86,11 @@ impl History {
     ///
     /// Lines without a value (notes or errors) are skipped, so a comment-only
     /// note never breaks the `ans` chain.
-    pub fn last_value(&self) -> Option<f64> {
-        self.entries.iter().rev().find_map(|entry| entry.value)
+    pub fn last_value(&self) -> Option<Quantity> {
+        self.entries
+            .iter()
+            .rev()
+            .find_map(|entry| entry.value.clone())
     }
 
     /// Appends `entry`, dropping the oldest entry when over capacity.
@@ -140,15 +145,17 @@ impl History {
     /// assignments on later lines.
     pub fn recompute_from<F>(&mut self, start: usize, mut evaluate: F)
     where
-        F: FnMut(&str, Option<f64>) -> LineResult,
+        F: FnMut(&str, Option<Quantity>) -> LineResult,
     {
-        let mut running =
-            self.entries[..start].iter().rev().find_map(|e| e.value);
+        let mut running = self.entries[..start]
+            .iter()
+            .rev()
+            .find_map(|e| e.value.clone());
         for index in start..self.entries.len() {
             let input = self.entries[index].input.clone();
-            let (value, error) = evaluate(&input, running);
+            let (value, error) = evaluate(&input, running.clone());
             if value.is_some() {
-                running = value;
+                running = value.clone();
             }
             let entry = &mut self.entries[index];
             entry.value = value;
@@ -169,16 +176,30 @@ impl History {
 mod tests {
     use super::*;
 
+    fn q(value: f64) -> Quantity {
+        Quantity::dimensionless(value)
+    }
+
+    /// The display values of the entries, for assertions.
+    fn values(history: &History) -> Vec<Option<f64>> {
+        history
+            .entries()
+            .iter()
+            .map(|e| e.value.as_ref().map(Quantity::display_value))
+            .collect()
+    }
+
     /// An evaluator that ignores the input and returns `ans + 1`, so the value
     /// chain becomes 1, 2, 3, ... — enough to test `ans` threading.
-    fn increment(_input: &str, ans: Option<f64>) -> LineResult {
-        (Some(ans.unwrap_or(0.0) + 1.0), None)
+    fn increment(_input: &str, ans: Option<Quantity>) -> LineResult {
+        let previous = ans.map_or(0.0, |a| a.display_value());
+        (Some(q(previous + 1.0)), None)
     }
 
     fn history_of(inputs: &[&str]) -> History {
         let entries = inputs
             .iter()
-            .map(|input| HistoryEntry::evaluated(input.to_string(), 0.0))
+            .map(|input| HistoryEntry::evaluated(input.to_string(), q(0.0)))
             .collect();
         History::from_entries(entries, 100)
     }
@@ -187,27 +208,24 @@ mod tests {
     fn recompute_threads_ans_through_the_chain() {
         let mut history = history_of(&["a", "b", "c"]);
         history.recompute_from(0, increment);
-        let values: Vec<Option<f64>> =
-            history.entries().iter().map(|e| e.value).collect();
-        assert_eq!(values, vec![Some(1.0), Some(2.0), Some(3.0)]);
-        assert_eq!(history.last_value(), Some(3.0));
+        assert_eq!(values(&history), vec![Some(1.0), Some(2.0), Some(3.0)]);
+        assert_eq!(history.last_value().map(|a| a.display_value()), Some(3.0));
     }
 
     #[test]
     fn recompute_skips_value_less_lines_when_threading_ans() {
-        fn maybe_increment(input: &str, ans: Option<f64>) -> LineResult {
+        fn maybe_increment(input: &str, ans: Option<Quantity>) -> LineResult {
             if input == "note" {
                 (None, None)
             } else {
-                (Some(ans.unwrap_or(0.0) + 1.0), None)
+                let previous = ans.map_or(0.0, |a| a.display_value());
+                (Some(q(previous + 1.0)), None)
             }
         }
         let mut history = history_of(&["a", "note", "b"]);
         history.recompute_from(0, maybe_increment);
-        let values: Vec<Option<f64>> =
-            history.entries().iter().map(|e| e.value).collect();
         // The note has no value and does not break the chain (`b` sees `a`).
-        assert_eq!(values, vec![Some(1.0), None, Some(2.0)]);
+        assert_eq!(values(&history), vec![Some(1.0), None, Some(2.0)]);
     }
 
     #[test]
@@ -217,19 +235,17 @@ mod tests {
         // Seed the first value, then recompute only the tail.
         history.recompute_from(0, increment);
         // Pretend the first entry was edited to evaluate to 10.
-        history.entries[0].value = Some(10.0);
+        history.entries[0].value = Some(q(10.0));
         history.recompute_from(1, increment);
-        let values: Vec<Option<f64>> =
-            history.entries().iter().map(|e| e.value).collect();
-        assert_eq!(values, vec![Some(10.0), Some(11.0), Some(12.0)]);
+        assert_eq!(values(&history), vec![Some(10.0), Some(11.0), Some(12.0)]);
     }
 
     #[test]
     fn push_drops_oldest_beyond_capacity() {
         let mut history = History::new(2);
-        history.push(HistoryEntry::evaluated("1".to_string(), 1.0));
-        history.push(HistoryEntry::evaluated("2".to_string(), 2.0));
-        history.push(HistoryEntry::evaluated("3".to_string(), 3.0));
+        history.push(HistoryEntry::evaluated("1".to_string(), q(1.0)));
+        history.push(HistoryEntry::evaluated("2".to_string(), q(2.0)));
+        history.push(HistoryEntry::evaluated("3".to_string(), q(3.0)));
         let inputs: Vec<&str> =
             history.entries().iter().map(|e| e.input.as_str()).collect();
         assert_eq!(inputs, vec!["2", "3"]);
@@ -243,14 +259,14 @@ mod tests {
             history.entries().iter().map(|e| e.input.as_str()).collect();
         assert_eq!(inputs, vec!["c", "b", "a"]);
 
-        history.insert(1, HistoryEntry::evaluated("x".to_string(), 0.0));
+        history.insert(1, HistoryEntry::evaluated("x".to_string(), q(0.0)));
         let inputs: Vec<&str> =
             history.entries().iter().map(|e| e.input.as_str()).collect();
         assert_eq!(inputs, vec!["c", "x", "b", "a"]);
 
         // Out-of-range swap is a no-op; insert past the end clamps.
         history.swap(0, 99);
-        history.insert(99, HistoryEntry::evaluated("end".to_string(), 0.0));
+        history.insert(99, HistoryEntry::evaluated("end".to_string(), q(0.0)));
         assert_eq!(history.entries().last().unwrap().input, "end");
     }
 

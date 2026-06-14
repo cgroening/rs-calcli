@@ -10,6 +10,7 @@ use calcli::config::{Config, load_config};
 use calcli::domain::evaluator::MevalEvaluator;
 use calcli::domain::format::FormatSettings;
 use calcli::domain::history::{History, HistoryEntry};
+use calcli::domain::quantity::Quantity;
 use calcli::domain::variables::VariableStore;
 use calcli::service::CalcService;
 use calcli::storage::{PersistedState, StateRepository, TomlStateRepository};
@@ -54,18 +55,21 @@ fn run() -> anyhow::Result<()> {
 /// Builds the calculator service from config and the restored state.
 fn build_service(config: &Config, state: &PersistedState) -> CalcService {
     let settings = resolve_settings(config, state);
-    let variables = VariableStore::from_pairs(
-        state
-            .variables
-            .iter()
-            .map(|(name, value)| (name.clone(), *value)),
-    );
+    let variables = VariableStore::from_pairs(state.variables.iter().map(
+        |(name, stored)| {
+            let quantity =
+                Quantity::from_persisted(stored.value, stored.unit.as_deref());
+            (name.clone(), quantity)
+        },
+    ));
     let entries = state
         .history
         .iter()
         .map(|entry| HistoryEntry {
             input: entry.input.clone(),
-            value: entry.value,
+            value: entry.value.map(|value| {
+                Quantity::from_persisted(value, entry.unit.as_deref())
+            }),
             error: None,
         })
         .collect();

@@ -7,6 +7,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::domain::quantity::Quantity;
+
 /// How an evaluated value is rendered.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize,
@@ -122,10 +124,37 @@ const SI_PREFIXES: &[(i32, &str)] = &[
     (12, "T"),
 ];
 
-/// Renders `value` for display: rounded to `settings.decimals`, with the
-/// configured decimal mark and (in decimal notation) thousands grouping. This
-/// is what the history shows and what `Y` copies.
-pub fn format_display(value: f64, settings: &FormatSettings) -> String {
+/// Renders a quantity for display: the value rounded to `settings.decimals`
+/// (grouped in decimal notation) plus its unit symbol. This is what the history
+/// shows and what `Y` copies.
+pub fn format_display(
+    quantity: &Quantity,
+    settings: &FormatSettings,
+) -> String {
+    with_unit(format_number(quantity.display_value(), settings), quantity)
+}
+
+/// Renders a quantity as a plain, directly reusable value: full `f64` precision,
+/// the configured decimal mark, no grouping, plus the unit. This is what `y`
+/// copies.
+pub fn format_plain(quantity: &Quantity, settings: &FormatSettings) -> String {
+    let number = swap_decimal_mark(
+        &quantity.display_value().to_string(),
+        settings.decimal_separator,
+    );
+    with_unit(number, quantity)
+}
+
+/// Appends the quantity's unit symbol to an already-formatted number.
+fn with_unit(number: String, quantity: &Quantity) -> String {
+    match quantity.unit_symbol() {
+        Some(symbol) => format!("{number} {symbol}"),
+        None => number,
+    }
+}
+
+/// Formats a bare `f64` according to the notation settings.
+fn format_number(value: f64, settings: &FormatSettings) -> String {
     if !value.is_finite() {
         return value.to_string();
     }
@@ -134,13 +163,6 @@ pub fn format_display(value: f64, settings: &FormatSettings) -> String {
         Notation::Scientific => format_scientific(value, settings),
         Notation::SiPrefixed => format_si(value, settings),
     }
-}
-
-/// Renders `value` as a plain, directly reusable number: full `f64` precision,
-/// the configured decimal mark, and no thousands grouping. This is what `y`
-/// copies.
-pub fn format_plain(value: f64, settings: &FormatSettings) -> String {
-    swap_decimal_mark(&value.to_string(), settings.decimal_separator)
 }
 
 /// Fixed-point with grouping on the integer part.
@@ -235,12 +257,17 @@ mod tests {
         }
     }
 
+    /// A dimensionless quantity, for testing the number formatting.
+    fn q(value: f64) -> Quantity {
+        Quantity::dimensionless(value)
+    }
+
     #[test]
     fn decimal_groups_thousands_and_keeps_precision() {
         let s = settings();
-        assert_eq!(format_display(1234.5, &s), "1 234.500");
-        assert_eq!(format_display(-1_000_000.0, &s), "-1 000 000.000");
-        assert_eq!(format_display(12.0, &s), "12.000");
+        assert_eq!(format_display(&q(1234.5), &s), "1 234.500");
+        assert_eq!(format_display(&q(-1_000_000.0), &s), "-1 000 000.000");
+        assert_eq!(format_display(&q(12.0), &s), "12.000");
     }
 
     #[test]
@@ -248,7 +275,7 @@ mod tests {
         let mut s = settings();
         s.decimal_separator = ',';
         s.thousands_separator = ".".to_string();
-        assert_eq!(format_display(1234.5, &s), "1.234,500");
+        assert_eq!(format_display(&q(1234.5), &s), "1.234,500");
     }
 
     #[test]
@@ -256,27 +283,27 @@ mod tests {
         let mut s = settings();
         s.notation = Notation::Scientific;
         s.decimals = 3;
-        assert_eq!(format_display(1234.0, &s), "1.234e3");
+        assert_eq!(format_display(&q(1234.0), &s), "1.234e3");
         s.decimal_separator = ',';
-        assert_eq!(format_display(1234.0, &s), "1,234e3");
+        assert_eq!(format_display(&q(1234.0), &s), "1,234e3");
     }
 
     #[test]
     fn si_prefix_picks_engineering_buckets() {
         let mut s = settings();
         s.notation = Notation::SiPrefixed;
-        assert_eq!(format_display(1500.0, &s), "1.500 k");
-        assert_eq!(format_display(0.0033, &s), "3.300 m");
-        assert_eq!(format_display(2_000_000.0, &s), "2.000 M");
-        assert_eq!(format_display(42.0, &s), "42.000");
+        assert_eq!(format_display(&q(1500.0), &s), "1.500 k");
+        assert_eq!(format_display(&q(0.0033), &s), "3.300 m");
+        assert_eq!(format_display(&q(2_000_000.0), &s), "2.000 M");
+        assert_eq!(format_display(&q(42.0), &s), "42.000");
     }
 
     #[test]
     fn plain_keeps_full_precision_without_grouping() {
         let s = settings();
-        assert_eq!(format_plain(1234.5, &s), "1234.5");
+        assert_eq!(format_plain(&q(1234.5), &s), "1234.5");
         assert_eq!(
-            format_plain(std::f64::consts::PI, &s),
+            format_plain(&q(std::f64::consts::PI), &s),
             std::f64::consts::PI.to_string()
         );
     }
@@ -285,6 +312,17 @@ mod tests {
     fn plain_swaps_the_decimal_mark() {
         let mut s = settings();
         s.decimal_separator = ',';
-        assert_eq!(format_plain(1234.5, &s), "1234,5");
+        assert_eq!(format_plain(&q(1234.5), &s), "1234,5");
+    }
+
+    #[test]
+    fn a_quantity_appends_its_unit() {
+        let s = settings();
+        let bar =
+            Quantity::new(123.0, crate::domain::units::parse("MPa").unwrap())
+                .convert_to(crate::domain::units::parse("bar").unwrap())
+                .unwrap();
+        assert_eq!(format_display(&bar, &s), "1 230.000 bar");
+        assert_eq!(format_plain(&bar, &s), "1230 bar");
     }
 }

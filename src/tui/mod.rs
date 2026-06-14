@@ -28,8 +28,11 @@ use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 use crate::config::{Config, GlyphSet};
 use crate::domain::format::{AngleMode, Notation};
 use crate::domain::highlight;
+use crate::domain::quantity::Quantity;
 use crate::service::{CalcService, Preview};
-use crate::storage::{PersistedEntry, PersistedSettings, PersistedState};
+use crate::storage::{
+    PersistedEntry, PersistedSettings, PersistedState, PersistedValue,
+};
 use crate::tui::colors::{Highlight, parse_color};
 use crate::tui::terminal::{Tui, is_global_quit};
 use crate::tui::text_edit::TextCursor;
@@ -143,14 +146,26 @@ impl App {
             .iter()
             .map(|entry| PersistedEntry {
                 input: entry.input.clone(),
-                value: entry.value,
+                value: entry.value.as_ref().map(Quantity::display_value),
+                unit: entry
+                    .value
+                    .as_ref()
+                    .and_then(|q| q.unit_symbol().map(str::to_string)),
             })
             .collect();
         let variables = self
             .service
             .variables()
             .iter()
-            .map(|(name, value)| (name.clone(), *value))
+            .map(|(name, value)| {
+                (
+                    name.clone(),
+                    PersistedValue {
+                        value: value.display_value(),
+                        unit: value.unit_symbol().map(str::to_string),
+                    },
+                )
+            })
             .collect();
         PersistedState {
             settings: Some(PersistedSettings {
@@ -376,7 +391,7 @@ impl App {
             }
             KeyCode::Char('y') if ctrl => {
                 match self.service.history().last_value() {
-                    Some(value) => self.copy_plain(value),
+                    Some(value) => self.copy_plain(&value),
                     None => self.status = Some("no result yet".to_string()),
                 }
             }
@@ -441,7 +456,7 @@ impl App {
         match (&outcome.value, &outcome.error) {
             (_, Some(error)) => error.clone(),
             (Some(value), None) => {
-                format!("= {}", self.service.format_display(*value))
+                format!("= {}", self.service.format_display(value))
             }
             (None, None) => String::new(),
         }
@@ -540,10 +555,10 @@ impl App {
             .history()
             .entries()
             .get(index)
-            .and_then(|e| e.value);
+            .and_then(|e| e.value.clone());
         match value {
-            Some(value) if as_displayed => self.copy_display(value),
-            Some(value) => self.copy_plain(value),
+            Some(value) if as_displayed => self.copy_display(&value),
+            Some(value) => self.copy_plain(&value),
             None => self.status = Some("no value to copy".to_string()),
         }
     }
@@ -660,13 +675,13 @@ impl App {
         }
     }
 
-    /// The name of the currently selected variable, if any.
-    fn selected_variable(&self) -> Option<(String, f64)> {
+    /// The name and value of the currently selected variable, if any.
+    fn selected_variable(&self) -> Option<(String, Quantity)> {
         self.service
             .variables()
             .iter()
             .nth(self.var_selected)
-            .map(|(name, value)| (name.clone(), *value))
+            .map(|(name, value)| (name.clone(), value.clone()))
     }
 
     /// Inserts the selected variable's name into the input and closes the
@@ -687,9 +702,9 @@ impl App {
             return;
         };
         if as_displayed {
-            self.copy_display(value);
+            self.copy_display(&value);
         } else {
-            self.copy_plain(value);
+            self.copy_plain(&value);
         }
     }
 
@@ -807,14 +822,14 @@ impl App {
         }
     }
 
-    /// Copies `value` as a plain, full-precision number (the `y` behaviour).
-    fn copy_plain(&mut self, value: f64) {
+    /// Copies `value` as a plain, full-precision value (the `y` behaviour).
+    fn copy_plain(&mut self, value: &Quantity) {
         let text = self.service.format_plain(value);
         self.status = Some(copy_status(&text));
     }
 
     /// Copies `value` as displayed: rounded and grouped (the `Y` behaviour).
-    fn copy_display(&mut self, value: f64) {
+    fn copy_display(&mut self, value: &Quantity) {
         let text = self.service.format_display(value);
         self.status = Some(copy_status(&text));
     }
@@ -998,7 +1013,7 @@ fn live_feedback_line(app: &App) -> Option<Line<'static>> {
     }
     match app.service.preview(&app.input) {
         Preview::Value(value) => {
-            let text = format!(" = {} ", app.service.format_display(value));
+            let text = format!(" = {} ", app.service.format_display(&value));
             let style =
                 Style::default().fg(app.accent).add_modifier(Modifier::DIM);
             Some(Line::from(Span::styled(text, style)))
@@ -1132,6 +1147,14 @@ mod tests {
         app.handle_key(key(KeyCode::Enter));
     }
 
+    /// The display value of history entry `index`.
+    fn value_at(app: &App, index: usize) -> Option<f64> {
+        app.service().history().entries()[index]
+            .value
+            .as_ref()
+            .map(Quantity::display_value)
+    }
+
     #[test]
     fn history_reorder_delete_and_clear_via_keys() {
         let mut app = test_app();
@@ -1144,8 +1167,8 @@ mod tests {
         // Alt+Up moves it to index 1 and recomputes.
         app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::ALT));
         assert_eq!(app.selected(), Some(1));
-        assert_eq!(app.service().history().entries()[1].value, Some(20.0));
-        assert_eq!(app.service().history().entries()[2].value, Some(25.0));
+        assert_eq!(value_at(&app, 1), Some(20.0));
+        assert_eq!(value_at(&app, 2), Some(25.0));
 
         // Delete asks first, then removes.
         app.handle_key(key(KeyCode::Char('d')));
@@ -1176,8 +1199,8 @@ mod tests {
         app.handle_key(key(KeyCode::Enter));
 
         // ["10", "ans*3", "ans+5"] -> 10, 30, 35.
-        assert_eq!(app.service().history().entries()[1].value, Some(30.0));
-        assert_eq!(app.service().history().entries()[2].value, Some(35.0));
+        assert_eq!(value_at(&app, 1), Some(30.0));
+        assert_eq!(value_at(&app, 2), Some(35.0));
     }
 
     #[test]
@@ -1224,7 +1247,13 @@ mod tests {
             app.handle_key(key(KeyCode::Char(c)));
         }
         app.handle_key(key(KeyCode::Enter));
-        assert_eq!(app.service().history().last_value(), Some(5.0));
+        assert_eq!(
+            app.service()
+                .history()
+                .last_value()
+                .map(|q| q.display_value()),
+            Some(5.0)
+        );
         let screen = render_to_string(&app);
         assert!(screen.contains("= 5"));
     }
@@ -1253,7 +1282,7 @@ mod tests {
             app.handle_key(key(KeyCode::Char(c)));
         }
         app.handle_key(key(KeyCode::Enter)); // apply
-        assert_eq!(app.service().history().entries()[1].value, Some(25.0));
+        assert_eq!(value_at(&app, 1), Some(25.0));
     }
 
     #[test]
@@ -1278,7 +1307,13 @@ mod tests {
             app.handle_key(key(KeyCode::Char(c)));
         }
         app.handle_key(key(KeyCode::Enter));
-        assert_eq!(app.service().variables().get("x"), Some(7.0));
+        assert_eq!(
+            app.service()
+                .variables()
+                .get("x")
+                .map(Quantity::display_value),
+            Some(7.0)
+        );
 
         app.handle_key(key(KeyCode::F(4))); // open variables
         assert!(matches!(app.overlay, Overlay::Variables));

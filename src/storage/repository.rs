@@ -20,10 +20,20 @@ pub struct PersistedState {
     pub settings: Option<PersistedSettings>,
     /// Variables by name, in sorted order.
     #[serde(default)]
-    pub variables: BTreeMap<String, f64>,
+    pub variables: BTreeMap<String, PersistedValue>,
     /// History entries, oldest first.
     #[serde(default)]
     pub history: Vec<PersistedEntry>,
+}
+
+/// A persisted value: the display number and its unit symbol, if any.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PersistedValue {
+    /// The value in its display unit.
+    pub value: f64,
+    /// The display unit symbol, omitted when dimensionless.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
 }
 
 /// The subset of display settings that persists (the rest comes from config).
@@ -45,9 +55,12 @@ pub struct PersistedSettings {
 pub struct PersistedEntry {
     /// The raw input as typed.
     pub input: String,
-    /// The computed value, omitted when the line errored.
+    /// The computed value, omitted for a note or an errored line.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value: Option<f64>,
+    /// The display unit symbol, omitted when dimensionless or absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
 }
 
 /// Loads and stores the persisted state.
