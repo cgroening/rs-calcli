@@ -48,6 +48,10 @@ Einheitenumrechnung ergänzt werden kann, ohne den Service zu ändern.
   Fakes vor Mocks. **Nach jeder Änderung `cargo test` laufen lassen.**
 - **Dependencies** minimieren; neue Crates vorher abstimmen. Etablierte Crates
   mit `// https://crates.io/crates/<name>` über dem `use` dokumentieren.
+- **Changelog pflegen:** Jede nutzersichtbare Änderung in `CHANGELOG.md` (Format
+  „Keep a Changelog") unter `## [Unreleased]` eintragen; bei einem Release den
+  Abschnitt versionieren/datieren und die `version` in `Cargo.toml` nach SemVer
+  anheben.
 
 ## TUI-Konventionen (Style Guide §7.10)
 
