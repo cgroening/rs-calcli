@@ -26,6 +26,7 @@ struct RawConfig {
     max_history: Option<usize>,
     glyphs: Option<GlyphSet>,
     restore_last_settings: Option<bool>,
+    live_feedback: Option<bool>,
     theme: Option<RawTheme>,
 }
 
@@ -77,6 +78,7 @@ fn merge(raw: RawConfig) -> Config {
         restore_last_settings: raw
             .restore_last_settings
             .unwrap_or(defaults.restore_last_settings),
+        live_feedback: raw.live_feedback.unwrap_or(defaults.live_feedback),
         theme: merge_theme(raw.theme),
     }
 }
@@ -162,6 +164,13 @@ mod tests {
             ..RawConfig::default()
         };
         assert_eq!(merge(raw).max_history, 1);
+    }
+
+    #[test]
+    fn live_feedback_defaults_on_and_can_be_disabled() {
+        assert!(merge(RawConfig::default()).live_feedback);
+        let raw: RawConfig = toml::from_str("live_feedback = false\n").unwrap();
+        assert!(!merge(raw).live_feedback);
     }
 
     #[test]

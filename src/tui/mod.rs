@@ -27,7 +27,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 
 use crate::config::{Config, GlyphSet};
 use crate::domain::format::{AngleMode, Notation};
-use crate::service::CalcService;
+use crate::service::{CalcService, Preview};
 use crate::storage::{PersistedEntry, PersistedSettings, PersistedState};
 use crate::tui::colors::parse_color;
 use crate::tui::terminal::{Tui, is_global_quit};
@@ -70,6 +70,7 @@ pub struct App {
     service: CalcService,
     accent: Color,
     glyphs: GlyphSet,
+    live_feedback: bool,
     input: String,
     cursor: TextCursor,
     mode: Mode,
@@ -91,6 +92,7 @@ impl App {
             service,
             accent: parse_color(&config.theme.accent_color),
             glyphs: config.glyphs,
+            live_feedback: config.live_feedback,
             input: String::new(),
             cursor: TextCursor::at(0),
             mode: Mode::Input,
@@ -731,11 +733,14 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App) {
 
 /// Renders the fixed input field, adapting to the focus mode.
 fn render_input(frame: &mut Frame, area: Rect, app: &App) {
-    let block = Block::default()
+    let mut block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(app.accent))
         .title(" input ");
+    if let Some(feedback) = live_feedback_line(app) {
+        block = block.title_bottom(feedback.right_aligned());
+    }
     let inner = area.inner(ratatui::layout::Margin::new(1, 1));
     frame.render_widget(block, area);
 
@@ -765,6 +770,31 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App) {
         )),
     };
     frame.render_widget(Paragraph::new(line), inner);
+}
+
+/// The dim live-feedback line for the input border: a result preview when the
+/// expression is valid, a muted warning when it looks complete but invalid, and
+/// nothing while typing, empty or disabled.
+fn live_feedback_line(app: &App) -> Option<Line<'static>> {
+    if !app.live_feedback || app.mode != Mode::Input || app.input.is_empty() {
+        return None;
+    }
+    match app.service.preview(&app.input) {
+        Preview::Value(value) => {
+            let text = format!(" = {} ", app.service.format_display(value));
+            let style =
+                Style::default().fg(app.accent).add_modifier(Modifier::DIM);
+            Some(Line::from(Span::styled(text, style)))
+        }
+        Preview::Invalid => {
+            let text = format!(" {} ", app.warn());
+            let style = Style::default()
+                .fg(colors::ERROR)
+                .add_modifier(Modifier::DIM);
+            Some(Line::from(Span::styled(text, style)))
+        }
+        Preview::Empty | Preview::Incomplete => None,
+    }
 }
 
 /// Renders the settings bar showing every active setting.
@@ -959,5 +989,33 @@ mod tests {
         assert!(matches!(app.overlay, Overlay::Confirm(..)));
         app.handle_key(key(KeyCode::Char('y'))); // confirm
         assert_eq!(app.service().variables().len(), 0);
+    }
+
+    #[test]
+    fn live_feedback_previews_valid_and_warns_on_invalid() {
+        let mut app = test_app();
+        for c in "2+3".chars() {
+            app.handle_key(key(KeyCode::Char(c)));
+        }
+        // Valid: a dim result preview on the input border.
+        assert!(render_to_string(&app).contains("= 5"));
+
+        // Complete but invalid: a warning marker, no preview.
+        app.handle_key(key(KeyCode::Char(')')));
+        let screen = render_to_string(&app);
+        assert!(screen.contains('\u{26a0}'));
+        assert!(!screen.contains("= 5"));
+    }
+
+    #[test]
+    fn live_feedback_stays_silent_while_typing() {
+        let mut app = test_app();
+        for c in "2+".chars() {
+            app.handle_key(key(KeyCode::Char(c)));
+        }
+        // Trailing operator looks unfinished: neither a preview nor a warning.
+        let screen = render_to_string(&app);
+        assert!(!screen.contains('\u{26a0}'));
+        assert!(!screen.contains('='));
     }
 }

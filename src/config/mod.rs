@@ -70,6 +70,8 @@ pub struct Config {
     /// Whether to restore the last session's settings on startup; when `false`,
     /// the defaults above are used every time.
     pub restore_last_settings: bool,
+    /// Whether the input field shows a live result preview / validity warning.
+    pub live_feedback: bool,
     /// Theme colours.
     pub theme: Theme,
 }
@@ -85,6 +87,7 @@ impl Default for Config {
             max_history: DEFAULT_MAX_HISTORY,
             glyphs: GlyphSet::default(),
             restore_last_settings: true,
+            live_feedback: true,
             theme: Theme::default(),
         }
     }

@@ -2,4 +2,4 @@
 
 pub mod calc_service;
 
-pub use calc_service::{CalcService, SubmitOutcome};
+pub use calc_service::{CalcService, Preview, SubmitOutcome};

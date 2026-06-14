@@ -31,6 +31,9 @@ glyphs = "unicode"
 # the defaults above (false). Variables and history are restored either way.
 restore_last_settings = true
 
+# Show a live result preview / validity warning on the input border as you type.
+live_feedback = true
+
 [theme]
 # Accent colour as #rrggbb or a name (cyan, green, magenta, yellow, blue).
 accent_color = "#6dd0ff"

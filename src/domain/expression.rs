@@ -146,6 +146,29 @@ pub fn is_valid_var_name(name: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
+/// Whether `input` looks like it is still being typed rather than genuinely
+/// malformed, so a live validity warning should be suppressed.
+///
+/// True when the input is empty, ends on a token that clearly expects more
+/// (an operator, an open paren, a separator, a decimal point or a scientific
+/// `e`), or has more open than closing parentheses. More closing than opening
+/// parentheses is a real error, so it is *not* treated as incomplete.
+pub fn looks_incomplete(input: &str) -> bool {
+    let trimmed = input.trim_end();
+    let Some(last) = trimmed.chars().last() else {
+        return true;
+    };
+    if matches!(
+        last,
+        '+' | '-' | '*' | '/' | '^' | '(' | '.' | ',' | ';' | 'e' | 'E'
+    ) {
+        return true;
+    }
+    let open = trimmed.matches('(').count();
+    let close = trimmed.matches(')').count();
+    open > close
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,5 +247,20 @@ mod tests {
         assert!(!is_valid_var_name(""));
         assert!(!is_valid_var_name("1x"));
         assert!(!is_valid_var_name("a b"));
+    }
+
+    #[test]
+    fn incomplete_input_suppresses_warnings_while_complete_input_does_not() {
+        // Still typing: trailing operator, open paren, separator, more "(".
+        assert!(looks_incomplete(""));
+        assert!(looks_incomplete("2+"));
+        assert!(looks_incomplete("2 * "));
+        assert!(looks_incomplete("sin("));
+        assert!(looks_incomplete("(2+3"));
+        assert!(looks_incomplete("1e"));
+        // Complete-looking (a real error or a valid expression).
+        assert!(!looks_incomplete("2+3"));
+        assert!(!looks_incomplete("2+3)"));
+        assert!(!looks_incomplete("sin(90)"));
     }
 }

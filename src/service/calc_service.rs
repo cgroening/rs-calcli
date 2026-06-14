@@ -28,6 +28,19 @@ pub struct SubmitOutcome {
     pub error: Option<String>,
 }
 
+/// A non-mutating live preview of the current input, for typed feedback.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Preview {
+    /// Nothing to show (empty input or a `:` command).
+    Empty,
+    /// The input currently evaluates to this value.
+    Value(f64),
+    /// The input looks unfinished (still being typed); show no warning.
+    Incomplete,
+    /// The input looks complete but does not parse; show a warning.
+    Invalid,
+}
+
 /// Orchestrates evaluation, history and variables behind one façade.
 pub struct CalcService {
     evaluator: Box<dyn Evaluator>,
@@ -162,6 +175,60 @@ impl CalcService {
     /// Renders `value` as a plain, full-precision number — for the `y` copy.
     pub fn format_plain(&self, value: f64) -> String {
         format_plain(value, &self.settings)
+    }
+
+    /// Previews the current input without mutating history, variables or `ans`.
+    ///
+    /// Returns the value when it evaluates, [`Preview::Incomplete`] while the
+    /// input still looks like it is being typed (so no warning is shown), and
+    /// [`Preview::Invalid`] when a complete-looking input does not parse.
+    pub fn preview(&self, input: &str) -> Preview {
+        let trimmed = input.trim();
+        if trimmed.is_empty() || trimmed.starts_with(':') {
+            return Preview::Empty;
+        }
+        match self.preview_value(trimmed) {
+            Some(value) => Preview::Value(value),
+            None if expression::looks_incomplete(trimmed) => {
+                Preview::Incomplete
+            }
+            None => Preview::Invalid,
+        }
+    }
+
+    /// Evaluates the input for the preview, reusing the submit pipeline but
+    /// reading (not mutating) the variable store.
+    fn preview_value(&self, input: &str) -> Option<f64> {
+        let ans = self.history.last_value();
+        match expression::classify(input) {
+            Statement::SaveAns(name) => {
+                if reject_name(&name).is_some() {
+                    return None;
+                }
+                ans
+            }
+            Statement::Assign { name, expr } => {
+                if reject_name(&name).is_some() {
+                    return None;
+                }
+                eval_expression(
+                    self.evaluator.as_ref(),
+                    &self.variables,
+                    &self.settings,
+                    &expr,
+                    ans,
+                )
+                .ok()
+            }
+            Statement::Expression(expr) => eval_expression(
+                self.evaluator.as_ref(),
+                &self.variables,
+                &self.settings,
+                &expr,
+                ans,
+            )
+            .ok(),
+        }
     }
 
     /// Re-evaluates the history from `start`, threading `ans` and applying
@@ -411,5 +478,29 @@ mod tests {
         assert_eq!(value_at(&service, 1), Some(20.0));
         service.edit_entry(0, "a = 5");
         assert_eq!(value_at(&service, 1), Some(50.0));
+    }
+
+    #[test]
+    fn preview_reports_value_incomplete_and_invalid() {
+        let mut service = service();
+        service.submit("10");
+        assert_eq!(service.preview("2+3"), Preview::Value(5.0));
+        assert_eq!(service.preview("ans+5"), Preview::Value(15.0));
+        assert_eq!(service.preview("2+"), Preview::Incomplete);
+        assert_eq!(service.preview("2+3)"), Preview::Invalid);
+        assert_eq!(service.preview(""), Preview::Empty);
+        assert_eq!(service.preview(":d4"), Preview::Empty);
+    }
+
+    #[test]
+    fn preview_handles_assignments_without_mutating_state() {
+        let mut service = service();
+        service.submit("7");
+        assert_eq!(service.preview("x = ans + 3"), Preview::Value(10.0));
+        // Previewing must not define the variable or add to the history.
+        assert_eq!(service.variables().get("x"), None);
+        assert_eq!(service.history().len(), 1);
+        // A reserved name is invalid, not a value.
+        assert_eq!(service.preview("pi = 3"), Preview::Invalid);
     }
 }
