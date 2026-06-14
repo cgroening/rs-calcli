@@ -491,42 +491,28 @@ pub fn cursor_spans_styled(
     spans
 }
 
-/// Builds styled spans for `value` truncated to `width` characters (no cursor),
-/// appending a dim `…` when clipped. `styles` is indexed per character. Used for
-/// the read-only history rows.
-pub fn highlighted_spans(
+/// Soft-wraps `value` to `width` columns and renders one [`Line`] per display
+/// line (no cursor), applying the per-character `styles`. Used for the read-only
+/// history rows.
+pub fn wrapped_spans(
     value: &str,
     styles: &[Style],
     width: usize,
-) -> Vec<Span<'static>> {
-    let width = width.max(1);
-    let chars: Vec<char> = value.chars().collect();
-    let clipped = chars.len() > width;
-    let show = if clipped { width - 1 } else { chars.len() };
-
-    let mut spans: Vec<Span<'static>> = Vec::new();
-    let mut run = String::new();
-    let mut run_style = Style::default();
-    for (i, c) in chars.iter().take(show).enumerate() {
-        let style = styles.get(i).copied().unwrap_or_default();
-        if !run.is_empty() && style != run_style {
-            spans.push(Span::styled(std::mem::take(&mut run), run_style));
-        }
-        if run.is_empty() {
-            run_style = style;
-        }
-        run.push(*c);
-    }
-    if !run.is_empty() {
-        spans.push(Span::styled(run, run_style));
-    }
-    if clipped {
-        spans.push(Span::styled(
-            "\u{2026}".to_string(),
-            Style::default().add_modifier(Modifier::DIM),
-        ));
-    }
-    spans
+) -> Vec<Line<'static>> {
+    let lines = wrap_offsets(value, width);
+    lines
+        .iter()
+        .map(|(text, start)| {
+            let len = text.chars().count();
+            let line_styles = &styles
+                [(*start).min(styles.len())..(*start + len).min(styles.len())];
+            let caret = LineCaret {
+                cursor: None,
+                selection: None,
+            };
+            Line::from(cursor_spans_styled(text, caret, line_styles))
+        })
+        .collect()
 }
 
 /// Soft-wraps `value` to `width` columns and renders one [`Line`] per display

@@ -1,7 +1,9 @@
-//! Renders the calculation history. Each entry spans two lines: the
-//! syntax-highlighted input, then the right-aligned result (or error) below it.
-//! Entries alternate a subtle background (zebra striping); the selected entry
-//! and the one being edited get their own tint over both lines.
+//! Renders the calculation history. Each entry shows its syntax-highlighted
+//! input (soft-wrapped over as many lines as it needs) followed by the
+//! right-aligned result (or error) below it, then a configurable gap with an
+//! optional separator line. Because entries have variable height, the viewport
+//! is windowed by line: it keeps the selected entry visible and otherwise pins
+//! to the tail.
 
 use ratatui::Frame;
 use ratatui::layout::{Margin, Rect};
@@ -15,11 +17,10 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::domain::highlight;
 use crate::domain::history::HistoryEntry;
-use crate::tui::widgets::truncate;
 use crate::tui::{App, Mode, colors, text_edit};
 
-/// Content lines per history entry (input line + result line), before spacing.
-const CONTENT_LINES: usize = 2;
+/// Content lines per entry without wrapping (used only for the paging step).
+const MIN_ENTRY_LINES: usize = 2;
 
 /// Renders the history list into `area`.
 pub fn render(frame: &mut Frame, area: Rect, app: &App) {
@@ -36,10 +37,10 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     if height == 0 || width == 0 {
         return;
     }
+    app.set_history_width(width);
 
     let entries = app.service().history().entries();
-    let total = entries.len();
-    if total == 0 {
+    if entries.is_empty() {
         let hint = Line::from(Span::styled(
             "type an expression and press Enter",
             colors::dim(),
@@ -49,45 +50,191 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     }
 
     let spacing = app.history_spacing();
-    let per_entry = CONTENT_LINES + spacing;
-    let visible = (height / per_entry).max(1);
-    app.set_view_height(visible);
-    let offset = visible_offset(app, total, visible);
-    let end = (offset + visible).min(total);
+    let separator = app.history_separator();
 
-    let mut lines: Vec<Line> = Vec::with_capacity((end - offset) * per_entry);
-    for (index, entry) in
-        entries.iter().enumerate().skip(offset).take(end - offset)
-    {
-        let bg = row_bg(app, index);
-        lines.push(input_line(app, entry, index, width, bg));
-        lines.push(result_line(app, entry, width, bg));
-        push_gap(&mut lines, spacing, app.history_separator(), width);
+    // Pass 1: line offsets per entry (cheap; no highlighting).
+    let starts = entry_starts(app, entries, width, spacing);
+    let total_lines = *starts.last().expect("starts has a trailing sentinel");
+    let start_line = window_start(total_lines, height, app.selected(), &starts);
+    app.set_view_height((height / (MIN_ENTRY_LINES + spacing)).max(1));
+
+    // Pass 2: build only the entries intersecting the window.
+    let window_end = start_line + height;
+    let mut lines: Vec<Line> = Vec::with_capacity(height);
+    for (index, entry) in entries.iter().enumerate() {
+        if starts[index + 1] <= start_line {
+            continue;
+        }
+        if starts[index] >= window_end {
+            break;
+        }
+        let block = entry_block(app, entry, index, width, spacing, separator);
+        for (offset, line) in block.into_iter().enumerate() {
+            let global = starts[index] + offset;
+            if global >= start_line && global < window_end {
+                lines.push(line);
+            }
+        }
     }
     frame.render_widget(Paragraph::new(lines), inner);
 
-    render_scrollbar(frame, area, total, visible, offset);
+    render_scrollbar(frame, area, total_lines, height, start_line);
 }
 
-/// Computes the scroll offset (in entries), keeping the selection visible and
-/// otherwise pinning to the tail (most recent). Stores it back for paging.
-fn visible_offset(app: &App, total: usize, visible: usize) -> usize {
-    if total <= visible {
-        app.set_history_offset(0);
-        return 0;
+/// The starting line of each entry plus a trailing sentinel (total line count).
+fn entry_starts(
+    app: &App,
+    entries: &[HistoryEntry],
+    width: usize,
+    spacing: usize,
+) -> Vec<usize> {
+    let mut starts = Vec::with_capacity(entries.len() + 1);
+    let mut acc = 0;
+    for (index, entry) in entries.iter().enumerate() {
+        starts.push(acc);
+        acc += entry_height(app, entry, index, width, spacing);
     }
-    let max_offset = total - visible;
-    let mut offset = app.history_offset().min(max_offset);
-    match app.selected() {
-        None => offset = max_offset,
-        Some(selected) if selected < offset => offset = selected,
-        Some(selected) if selected >= offset + visible => {
-            offset = selected + 1 - visible;
+    starts.push(acc);
+    starts
+}
+
+/// The total number of lines an entry occupies (input + result + gap).
+fn entry_height(
+    app: &App,
+    entry: &HistoryEntry,
+    index: usize,
+    width: usize,
+    spacing: usize,
+) -> usize {
+    let input_lines =
+        text_edit::wrap_offsets(entry_input(app, entry, index), width).len();
+    let (result_text, _) = result_span(app, entry);
+    let result_lines = result_line_count(&result_text, width);
+    input_lines + result_lines + spacing
+}
+
+/// The first visible line so the selected entry stays in view; otherwise the
+/// tail (newest) is pinned to the bottom.
+fn window_start(
+    total_lines: usize,
+    height: usize,
+    selected: Option<usize>,
+    starts: &[usize],
+) -> usize {
+    let mut start = total_lines.saturating_sub(height);
+    if let Some(index) = selected {
+        let top = starts[index];
+        let bottom = starts[index + 1];
+        if top < start {
+            start = top;
         }
-        Some(_) => {}
+        if bottom > start + height {
+            start = bottom - height;
+        }
+        // An entry taller than the viewport shows from its top.
+        if bottom - top > height {
+            start = top;
+        }
     }
-    app.set_history_offset(offset);
-    offset
+    start
+}
+
+/// The text to display for an entry's input: the live buffer while editing it,
+/// otherwise the stored input.
+fn entry_input<'a>(
+    app: &'a App,
+    entry: &'a HistoryEntry,
+    index: usize,
+) -> &'a str {
+    if app.mode() == Mode::Edit(index) {
+        app.input()
+    } else {
+        &entry.input
+    }
+}
+
+/// Builds all lines of one entry: wrapped input, wrapped result, then the gap.
+fn entry_block(
+    app: &App,
+    entry: &HistoryEntry,
+    index: usize,
+    width: usize,
+    spacing: usize,
+    separator: Option<Color>,
+) -> Vec<Line<'static>> {
+    let bg = row_bg(app, index);
+    let mut lines = input_lines(app, entry, index, width, bg);
+    lines.extend(result_lines(app, entry, width, bg));
+    push_gap(&mut lines, spacing, separator, width);
+    lines
+}
+
+/// The wrapped, syntax-highlighted input lines (live editor on the edited row).
+fn input_lines(
+    app: &App,
+    entry: &HistoryEntry,
+    index: usize,
+    width: usize,
+    bg: Option<Color>,
+) -> Vec<Line<'static>> {
+    let text = entry_input(app, entry, index);
+    let kinds = highlight::classify(text, app.service().variables());
+    let styles = colors::styles_for(&kinds, app.highlight());
+
+    let wrapped = if app.mode() == Mode::Edit(index) {
+        text_edit::multiline_spans_styled(text, app.cursor(), width, &styles)
+    } else {
+        text_edit::wrapped_spans(text, &styles, width)
+    };
+    wrapped
+        .into_iter()
+        .map(|line| fill_row(line.spans, width, bg))
+        .collect()
+}
+
+/// The wrapped, right-aligned result (or error) lines.
+fn result_lines(
+    app: &App,
+    entry: &HistoryEntry,
+    width: usize,
+    bg: Option<Color>,
+) -> Vec<Line<'static>> {
+    let (text, style) = result_span(app, entry);
+    if text.is_empty() {
+        return Vec::new();
+    }
+    text_edit::wrap_offsets(&text, width)
+        .into_iter()
+        .map(|(segment, _)| {
+            let padding = width.saturating_sub(segment.width());
+            let spans = vec![
+                Span::raw(" ".repeat(padding)),
+                Span::styled(segment, style),
+            ];
+            styled_row(Line::from(spans), bg)
+        })
+        .collect()
+}
+
+/// Pads `spans` to the full `width` and applies the row background, so the tint
+/// spans the whole line.
+fn fill_row(
+    mut spans: Vec<Span<'static>>,
+    width: usize,
+    bg: Option<Color>,
+) -> Line<'static> {
+    let used: usize = spans.iter().map(|span| span.content.width()).sum();
+    spans.push(Span::raw(" ".repeat(width.saturating_sub(used))));
+    styled_row(Line::from(spans), bg)
+}
+
+/// The number of lines the result text occupies (0 when empty).
+fn result_line_count(text: &str, width: usize) -> usize {
+    if text.is_empty() {
+        0
+    } else {
+        text_edit::wrap_offsets(text, width).len()
+    }
 }
 
 /// The background tint for entry `index`: focus while editing, selection when
@@ -102,35 +249,6 @@ fn row_bg(app: &App, index: usize) -> Option<Color> {
     } else {
         None
     }
-}
-
-/// The top line of an entry: the syntax-highlighted input, padded to `width`.
-fn input_line(
-    app: &App,
-    entry: &HistoryEntry,
-    index: usize,
-    width: usize,
-    bg: Option<Color>,
-) -> Line<'static> {
-    let mut spans = input_spans(app, entry, index, width);
-    let used: usize = spans.iter().map(|span| span.content.width()).sum();
-    spans.push(Span::raw(" ".repeat(width.saturating_sub(used))));
-    styled_row(Line::from(spans), bg)
-}
-
-/// The bottom line of an entry: the right-aligned result or error, over the
-/// full `width`.
-fn result_line(
-    app: &App,
-    entry: &HistoryEntry,
-    width: usize,
-    bg: Option<Color>,
-) -> Line<'static> {
-    let (text, style) = result_span(app, entry);
-    let text = truncate(&text, width);
-    let padding = width.saturating_sub(text.width());
-    let spans = vec![Span::raw(" ".repeat(padding)), Span::styled(text, style)];
-    styled_row(Line::from(spans), bg)
 }
 
 /// Pushes the `spacing` gap lines after an entry. When a separator colour is
@@ -164,30 +282,6 @@ fn styled_row(line: Line<'static>, bg: Option<Color>) -> Line<'static> {
     }
 }
 
-/// The input spans for an entry: syntax-highlighted, switching to the live
-/// editor on the edited entry.
-fn input_spans(
-    app: &App,
-    entry: &HistoryEntry,
-    index: usize,
-    width: usize,
-) -> Vec<Span<'static>> {
-    let variables = app.service().variables();
-    if app.mode() == Mode::Edit(index) {
-        let kinds = highlight::classify(app.input(), variables);
-        let styles = colors::styles_for(&kinds, app.highlight());
-        return text_edit::single_line_spans_styled(
-            app.input(),
-            app.cursor(),
-            width,
-            &styles,
-        );
-    }
-    let kinds = highlight::classify(&entry.input, variables);
-    let styles = colors::styles_for(&kinds, app.highlight());
-    text_edit::highlighted_spans(&entry.input, &styles, width)
-}
-
 /// The result text and its style: the value (accent), the error (red), or empty.
 fn result_span(app: &App, entry: &HistoryEntry) -> (String, Style) {
     if let Some(error) = &entry.error {
@@ -206,19 +300,19 @@ fn result_span(app: &App, entry: &HistoryEntry) -> (String, Style) {
     }
 }
 
-/// Draws a dim vertical scrollbar when the entries overflow the viewport.
+/// Draws a dim vertical scrollbar when the content overflows the viewport.
 fn render_scrollbar(
     frame: &mut Frame,
     area: Rect,
-    total: usize,
-    visible: usize,
-    offset: usize,
+    total_lines: usize,
+    height: usize,
+    start_line: usize,
 ) {
-    if total <= visible {
+    if total_lines <= height {
         return;
     }
     let mut state =
-        ScrollbarState::new(total.saturating_sub(visible)).position(offset);
+        ScrollbarState::new(total_lines - height).position(start_line);
     let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
         .begin_symbol(None)
         .end_symbol(None)

@@ -10,9 +10,9 @@ the display is rounded.
 
 ## Features
 
-- **History with recompute** — input on the left, result on the right. Edit any
-  earlier line and every line below is re-evaluated, so `ans` chains stay
-  correct.
+- **History with recompute** — each entry shows the input with its result on
+  the line below (both soft-wrap long content). Edit any earlier line and every
+  line below is re-evaluated, so `ans` chains stay correct.
 - **Full precision** — the rounded value you see is only for display; further
   math always uses the exact internal value.
 - **Variables** — save with `=name` (stores the last answer) or `name = expr`.

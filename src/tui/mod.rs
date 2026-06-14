@@ -88,10 +88,10 @@ pub struct App {
     help_scroll: usize,
     status: Option<String>,
     quit: bool,
-    history_offset: Cell<usize>,
     view_height: Cell<usize>,
     var_offset: Cell<usize>,
     input_width: Cell<usize>,
+    history_width: Cell<usize>,
 }
 
 impl App {
@@ -120,10 +120,10 @@ impl App {
             help_scroll: 0,
             status: None,
             quit: false,
-            history_offset: Cell::new(0),
             view_height: Cell::new(1),
             var_offset: Cell::new(0),
             input_width: Cell::new(1),
+            history_width: Cell::new(1),
         }
     }
 
@@ -221,19 +221,14 @@ impl App {
         self.help_scroll
     }
 
-    /// The stored history scroll offset.
-    pub fn history_offset(&self) -> usize {
-        self.history_offset.get()
-    }
-
-    /// Records the history scroll offset chosen while rendering.
-    pub fn set_history_offset(&self, offset: usize) {
-        self.history_offset.set(offset);
-    }
-
     /// Records the history viewport height (for paging).
     pub fn set_view_height(&self, height: usize) {
         self.view_height.set(height);
+    }
+
+    /// Records the history content width (for wrapping in-place edits).
+    pub fn set_history_width(&self, width: usize) {
+        self.history_width.set(width);
     }
 
     /// The stored variables scroll offset.
@@ -545,12 +540,14 @@ impl App {
                 ) {
                     return;
                 }
-                // In-place editing stays single-line (horizontal scroll).
+                // In-place editing soft-wraps at the history width, like the
+                // entry is displayed.
+                let width = self.history_width.get().max(1);
                 text_edit::apply_edit_key(
                     &mut self.input,
                     &mut self.cursor,
                     key,
-                    text_edit::EditMode::SingleLine,
+                    text_edit::EditMode::Multiline { width },
                 );
             }
         }
@@ -1172,6 +1169,31 @@ mod tests {
         app.cursor = TextCursor::at(0);
         app.handle_key(key(KeyCode::Up));
         assert!(matches!(app.mode(), Mode::History));
+    }
+
+    #[test]
+    fn long_history_entry_wraps_instead_of_truncating() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let mut app = test_app();
+        for c in "111111111111111111+7".chars() {
+            app.handle_key(key(KeyCode::Char(c)));
+        }
+        app.handle_key(key(KeyCode::Enter));
+        // Clear the transient status (it would truncate with an ellipsis).
+        app.handle_key(key(KeyCode::Esc));
+
+        let backend = TestBackend::new(16, 16);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| render(&app, frame)).unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        let screen: String =
+            buffer.content().iter().map(|cell| cell.symbol()).collect();
+
+        // No ellipsis anywhere, and the input's tail survived (it wrapped).
+        assert!(!screen.contains('\u{2026}'));
+        assert!(screen.contains("+7"));
     }
 
     #[test]
