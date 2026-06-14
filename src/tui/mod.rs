@@ -52,6 +52,10 @@ pub enum Mode {
 enum ConfirmAction {
     /// Remove every variable.
     ResetVariables,
+    /// Delete the history entry at this index.
+    DeleteEntry(usize),
+    /// Clear the entire history.
+    ClearHistory,
 }
 
 /// The overlay drawn on top of the main view, if any.
@@ -88,6 +92,7 @@ pub struct App {
     help_scroll: usize,
     status: Option<String>,
     quit: bool,
+    editing_inserted: bool,
     view_height: Cell<usize>,
     var_offset: Cell<usize>,
     input_width: Cell<usize>,
@@ -120,6 +125,7 @@ impl App {
             help_scroll: 0,
             status: None,
             quit: false,
+            editing_inserted: false,
             view_height: Cell::new(1),
             var_offset: Cell::new(0),
             input_width: Cell::new(1),
@@ -460,7 +466,10 @@ impl App {
         let total = self.service.history().len();
         let last = total.saturating_sub(1);
         let page = self.view_height.get().max(1);
+        let alt = key.modifiers.contains(KeyModifiers::ALT);
         match key.code {
+            KeyCode::Up if alt => self.move_selected(index, -1),
+            KeyCode::Down if alt => self.move_selected(index, 1),
             KeyCode::Up => self.selected = Some(index.saturating_sub(1)),
             KeyCode::Down => {
                 if index < last {
@@ -476,10 +485,46 @@ impl App {
             KeyCode::Char('y') => self.copy_selected(index, false),
             KeyCode::Char('Y') => self.copy_selected(index, true),
             KeyCode::Char('e') | KeyCode::Enter => self.start_edit(index),
-            KeyCode::Char('d') | KeyCode::Delete => self.delete_selected(index),
+            KeyCode::Char('o') => self.insert_line(index + 1),
+            KeyCode::Char('O') => self.insert_line(index),
+            KeyCode::Char('d') | KeyCode::Delete => self.confirm_delete(index),
+            KeyCode::Char('D') => self.confirm_clear_history(),
             KeyCode::Esc => self.leave_history(),
             _ => {}
         }
+    }
+
+    /// Moves the selected entry by `delta` and follows it with the selection.
+    fn move_selected(&mut self, index: usize, delta: isize) {
+        let new_index = self.service.move_entry(index, delta);
+        self.selected = Some(new_index);
+    }
+
+    /// Inserts a blank entry at `at` and starts editing it immediately.
+    fn insert_line(&mut self, at: usize) {
+        self.service.insert_entry(at);
+        self.selected = Some(at);
+        self.start_edit(at);
+        self.editing_inserted = true;
+    }
+
+    /// Opens the confirmation modal for deleting the selected entry.
+    fn confirm_delete(&mut self, index: usize) {
+        self.overlay = Overlay::Confirm(
+            ConfirmModal::new("Delete this line?"),
+            ConfirmAction::DeleteEntry(index),
+        );
+    }
+
+    /// Opens the confirmation modal for clearing the whole history.
+    fn confirm_clear_history(&mut self) {
+        if self.service.history().is_empty() {
+            return;
+        }
+        self.overlay = Overlay::Confirm(
+            ConfirmModal::new("Clear the entire history?"),
+            ConfirmAction::ClearHistory,
+        );
     }
 
     /// Returns from history navigation to the input field.
@@ -511,6 +556,7 @@ impl App {
         self.input = entry.input.clone();
         self.cursor = TextCursor::at(self.input.chars().count());
         self.mode = Mode::Edit(index);
+        self.editing_inserted = false;
     }
 
     /// Deletes history entry `index` and keeps a valid selection.
@@ -531,10 +577,17 @@ impl App {
             KeyCode::Enter => {
                 let text = self.input.clone();
                 self.service.edit_entry(index, &text);
+                self.editing_inserted = false;
                 self.finish_edit(index);
                 self.status = Some("line updated".to_string());
             }
-            KeyCode::Esc => self.finish_edit(index),
+            KeyCode::Esc => {
+                if self.editing_inserted {
+                    self.cancel_insert(index);
+                } else {
+                    self.finish_edit(index);
+                }
+            }
             _ => {
                 if text_edit::handle_clipboard(
                     &mut self.input,
@@ -562,6 +615,22 @@ impl App {
         self.selected = Some(index);
         self.input.clear();
         self.cursor = TextCursor::at(0);
+    }
+
+    /// Cancels a freshly inserted line: removes the blank entry and returns to
+    /// history navigation.
+    fn cancel_insert(&mut self, index: usize) {
+        self.editing_inserted = false;
+        self.service.delete_entry(index);
+        self.input.clear();
+        self.cursor = TextCursor::at(0);
+        let total = self.service.history().len();
+        if total == 0 {
+            self.leave_history();
+        } else {
+            self.mode = Mode::History;
+            self.selected = Some(index.min(total - 1));
+        }
     }
 
     /// Handles keys in the variables overlay.
@@ -642,19 +711,28 @@ impl App {
             _ => return,
         };
         match result {
-            ConfirmResult::Yes => {
-                match action {
-                    ConfirmAction::ResetVariables => {
-                        self.service.reset_variables();
-                        self.var_selected = 0;
-                        self.status = Some("variables reset".to_string());
-                    }
-                }
-                self.overlay = Overlay::Variables;
-            }
-            ConfirmResult::No => self.overlay = Overlay::Variables,
+            ConfirmResult::Yes => self.apply_confirmed(action),
+            ConfirmResult::No => self.overlay = return_overlay(action),
             ConfirmResult::Pending => {}
         }
+    }
+
+    /// Performs a confirmed destructive action and restores the right view.
+    fn apply_confirmed(&mut self, action: ConfirmAction) {
+        match action {
+            ConfirmAction::ResetVariables => {
+                self.service.reset_variables();
+                self.var_selected = 0;
+                self.status = Some("variables reset".to_string());
+            }
+            ConfirmAction::DeleteEntry(index) => self.delete_selected(index),
+            ConfirmAction::ClearHistory => {
+                self.service.clear_history();
+                self.leave_history();
+                self.status = Some("history cleared".to_string());
+            }
+        }
+        self.overlay = return_overlay(action);
     }
 
     /// Handles keys in the help overlay.
@@ -692,9 +770,14 @@ impl App {
                 "angle: RAD".to_string()
             }
             "clear" => {
-                self.service.clear_history();
-                self.leave_history();
-                "history cleared".to_string()
+                if self.service.history().is_empty() {
+                    return "history is already empty".to_string();
+                }
+                self.overlay = Overlay::Confirm(
+                    ConfirmModal::new("Clear the entire history?"),
+                    ConfirmAction::ClearHistory,
+                );
+                String::new()
             }
             other => self.run_notation_command(other),
         }
@@ -734,6 +817,17 @@ impl App {
     fn copy_display(&mut self, value: f64) {
         let text = self.service.format_display(value);
         self.status = Some(copy_status(&text));
+    }
+}
+
+/// The overlay to restore after a confirmation: back to the variables list for
+/// a variables action, otherwise the main view.
+fn return_overlay(action: ConfirmAction) -> Overlay {
+    match action {
+        ConfirmAction::ResetVariables => Overlay::Variables,
+        ConfirmAction::DeleteEntry(_) | ConfirmAction::ClearHistory => {
+            Overlay::None
+        }
     }
 }
 
@@ -982,11 +1076,13 @@ fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
         (_, Mode::Edit(_)) => &[("Enter", "apply"), ("Esc", "cancel")],
         (_, Mode::History) => &[
             ("\u{2191}\u{2193}", "select"),
-            ("Enter/e", "edit"),
+            ("Alt+\u{2191}\u{2193}", "move"),
+            ("o/O", "insert"),
+            ("Enter", "edit"),
             ("d", "delete"),
+            ("D", "clear"),
             ("y/Y", "copy"),
             ("Esc", "back"),
-            ("F1", "help"),
         ],
         (_, Mode::Input) => &[
             ("Enter", "calc"),
@@ -1026,6 +1122,74 @@ mod tests {
             VariableStore::new(),
         );
         App::new(service, &config)
+    }
+
+    /// Types `text` then submits it (Enter).
+    fn submit(app: &mut App, text: &str) {
+        for c in text.chars() {
+            app.handle_key(key(KeyCode::Char(c)));
+        }
+        app.handle_key(key(KeyCode::Enter));
+    }
+
+    #[test]
+    fn history_reorder_delete_and_clear_via_keys() {
+        let mut app = test_app();
+        submit(&mut app, "10");
+        submit(&mut app, "ans+5"); // 15
+        submit(&mut app, "ans*2"); // 30
+
+        app.handle_key(key(KeyCode::Up)); // enter history, select last (2)
+        assert_eq!(app.selected(), Some(2));
+        // Alt+Up moves it to index 1 and recomputes.
+        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::ALT));
+        assert_eq!(app.selected(), Some(1));
+        assert_eq!(app.service().history().entries()[1].value, Some(20.0));
+        assert_eq!(app.service().history().entries()[2].value, Some(25.0));
+
+        // Delete asks first, then removes.
+        app.handle_key(key(KeyCode::Char('d')));
+        assert!(matches!(app.overlay, Overlay::Confirm(..)));
+        app.handle_key(key(KeyCode::Char('y')));
+        assert_eq!(app.service().history().len(), 2);
+
+        // Shift+D clears everything after confirming.
+        app.handle_key(key(KeyCode::Char('D')));
+        assert!(matches!(app.overlay, Overlay::Confirm(..)));
+        app.handle_key(key(KeyCode::Char('y')));
+        assert_eq!(app.service().history().len(), 0);
+    }
+
+    #[test]
+    fn inserting_a_line_enters_edit_and_recomputes() {
+        let mut app = test_app();
+        submit(&mut app, "10");
+        submit(&mut app, "ans+5"); // 15
+
+        app.handle_key(key(KeyCode::Up)); // select last (1)
+        app.handle_key(key(KeyCode::Home)); // select 0
+        app.handle_key(key(KeyCode::Char('o'))); // insert below -> edit index 1
+        assert!(matches!(app.mode(), Mode::Edit(1)));
+        for c in "ans*3".chars() {
+            app.handle_key(key(KeyCode::Char(c)));
+        }
+        app.handle_key(key(KeyCode::Enter));
+
+        // ["10", "ans*3", "ans+5"] -> 10, 30, 35.
+        assert_eq!(app.service().history().entries()[1].value, Some(30.0));
+        assert_eq!(app.service().history().entries()[2].value, Some(35.0));
+    }
+
+    #[test]
+    fn cancelling_an_inserted_line_removes_it() {
+        let mut app = test_app();
+        submit(&mut app, "10");
+        app.handle_key(key(KeyCode::Up)); // select 0
+        app.handle_key(key(KeyCode::Char('o'))); // insert -> edit index 1
+        assert_eq!(app.service().history().len(), 2);
+        app.handle_key(key(KeyCode::Esc)); // cancel
+        assert_eq!(app.service().history().len(), 1);
+        assert!(matches!(app.mode(), Mode::History));
     }
 
     /// Renders `app` into an 80x24 test terminal and returns the screen text.

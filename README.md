@@ -61,11 +61,17 @@ cargo run --release
 | Key | Action |
 | --- | --- |
 | `↑` `↓` / `PgUp` `PgDn` / `Home` `End` | move the selection |
+| `Alt+↑` / `Alt+↓` | move the selected line up / down (recomputes) |
+| `o` / `O` | insert a line below / above and edit it |
 | `Enter` / `e` | edit the selected line (recomputes below) |
-| `d` / `Del` | delete the selected line |
+| `d` / `Del` | delete the selected line (asks first) |
+| `Shift+D` | clear the whole history (asks first) |
 | `y` | copy the value (plain, full precision) |
 | `Y` | copy the value (as shown, grouped) |
 | `Esc` | back to the input |
+
+Reordering, inserting and deleting all re-evaluate the affected lines, so `ans`
+and variable assignments stay consistent with the new order.
 
 ### Variables (`F4`)
 | Key | Action |

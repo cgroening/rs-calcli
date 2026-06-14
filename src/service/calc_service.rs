@@ -109,6 +109,35 @@ impl CalcService {
         self.recompute(index);
     }
 
+    /// Moves the entry at `index` by `delta` positions (clamped) and
+    /// re-evaluates from the first affected line. Returns the new index, so the
+    /// caller can follow the moved entry with its selection.
+    pub fn move_entry(&mut self, index: usize, delta: isize) -> usize {
+        let len = self.history.len();
+        if len == 0 {
+            return 0;
+        }
+        let target =
+            (index as isize + delta).clamp(0, len as isize - 1) as usize;
+        if target != index {
+            self.history.swap(index, target);
+            self.recompute(index.min(target));
+        }
+        target
+    }
+
+    /// Inserts a blank entry at `index` and re-evaluates the tail. The caller
+    /// typically edits it immediately.
+    pub fn insert_entry(&mut self, index: usize) {
+        let blank = HistoryEntry {
+            input: String::new(),
+            value: None,
+            error: None,
+        };
+        self.history.insert(index, blank);
+        self.recompute(index);
+    }
+
     /// Clears the history.
     pub fn clear_history(&mut self) {
         self.history.clear();
@@ -532,6 +561,31 @@ mod tests {
         // The note does not break the `ans` chain.
         service.submit("ans + 1");
         assert_eq!(service.history().entries()[2].value, Some(6.0));
+    }
+
+    #[test]
+    fn moving_an_entry_recomputes_the_ans_chain() {
+        let mut service = service();
+        service.submit("10");
+        service.submit("ans + 5"); // 15
+        service.submit("ans * 2"); // 30
+        // Move the last line up one: ["10", "ans*2", "ans+5"].
+        let new_index = service.move_entry(2, -1);
+        assert_eq!(new_index, 1);
+        assert_eq!(value_at(&service, 1), Some(20.0)); // ans*2 with ans=10
+        assert_eq!(value_at(&service, 2), Some(25.0)); // ans+5 with ans=20
+    }
+
+    #[test]
+    fn inserting_a_blank_entry_shifts_and_recomputes() {
+        let mut service = service();
+        service.submit("10");
+        service.submit("ans + 5"); // 15
+        service.insert_entry(1);
+        assert_eq!(service.history().len(), 3);
+        assert_eq!(service.history().entries()[1].input, "");
+        // The blank note passes ans through, so `ans + 5` is still 15.
+        assert_eq!(value_at(&service, 2), Some(15.0));
     }
 
     #[test]

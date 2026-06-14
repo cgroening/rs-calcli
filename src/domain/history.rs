@@ -108,6 +108,22 @@ impl History {
         }
     }
 
+    /// Swaps the entries at `a` and `b`; a no-op when either is out of range.
+    pub fn swap(&mut self, a: usize, b: usize) {
+        let len = self.entries.len();
+        if a < len && b < len {
+            self.entries.swap(a, b);
+        }
+    }
+
+    /// Inserts `entry` at `index` (clamped to the end), dropping the oldest
+    /// entry when this exceeds capacity.
+    pub fn insert(&mut self, index: usize, entry: HistoryEntry) {
+        let index = index.min(self.entries.len());
+        self.entries.insert(index, entry);
+        self.trim_to_cap();
+    }
+
     /// Removes every entry.
     pub fn clear(&mut self) {
         self.entries.clear();
@@ -217,6 +233,25 @@ mod tests {
         let inputs: Vec<&str> =
             history.entries().iter().map(|e| e.input.as_str()).collect();
         assert_eq!(inputs, vec!["2", "3"]);
+    }
+
+    #[test]
+    fn swap_and_insert_reorder_entries() {
+        let mut history = history_of(&["a", "b", "c"]);
+        history.swap(0, 2);
+        let inputs: Vec<&str> =
+            history.entries().iter().map(|e| e.input.as_str()).collect();
+        assert_eq!(inputs, vec!["c", "b", "a"]);
+
+        history.insert(1, HistoryEntry::evaluated("x".to_string(), 0.0));
+        let inputs: Vec<&str> =
+            history.entries().iter().map(|e| e.input.as_str()).collect();
+        assert_eq!(inputs, vec!["c", "x", "b", "a"]);
+
+        // Out-of-range swap is a no-op; insert past the end clamps.
+        history.swap(0, 99);
+        history.insert(99, HistoryEntry::evaluated("end".to_string(), 0.0));
+        assert_eq!(history.entries().last().unwrap().input, "end");
     }
 
     #[test]

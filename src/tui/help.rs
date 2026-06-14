@@ -39,8 +39,11 @@ const GROUPS: &[Group] = &[
             ("\u{2191} \u{2193}", "select a line"),
             ("PgUp / PgDn", "page through the history"),
             ("Home / End", "jump to the first / last line"),
+            ("Alt+\u{2191} / Alt+\u{2193}", "move the line up / down"),
+            ("o / O", "insert a line below / above"),
             ("Enter / e", "edit the selected line"),
-            ("d / Del", "delete the selected line"),
+            ("d / Del", "delete the selected line (asks first)"),
+            ("Shift+D", "clear the whole history (asks first)"),
             ("y", "copy the value (plain, full precision)"),
             ("Y", "copy the value (as shown, grouped)"),
             ("Esc", "back to the input"),
@@ -50,7 +53,7 @@ const GROUPS: &[Group] = &[
         title: "Editing a line",
         bindings: &[
             ("Enter", "apply and recompute below"),
-            ("Esc", "cancel the edit"),
+            ("Esc", "cancel (a freshly inserted line is removed)"),
         ],
     },
     Group {
