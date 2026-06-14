@@ -35,6 +35,9 @@ pub const DEFAULT_SETTINGS_BAR_BG: &str = "#252525";
 /// Default background tint for alternating history entries (zebra striping).
 pub const DEFAULT_HISTORY_ALT_BG: &str = "#1a1a1a";
 
+/// Default colour of the separator line between history entries (a muted gray).
+pub const DEFAULT_HISTORY_SEPARATOR_COLOR: &str = "#3e3e3e";
+
 /// Which glyph set the TUI renders.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize,
@@ -70,6 +73,8 @@ pub struct Theme {
     pub settings_bar_bg: String,
     /// Background tint of every second history entry (zebra striping).
     pub history_alt_bg: String,
+    /// Colour of the separator line drawn between history entries.
+    pub history_separator_color: String,
 }
 
 impl Default for Theme {
@@ -84,6 +89,8 @@ impl Default for Theme {
             ans_color: DEFAULT_ANS_COLOR.to_string(),
             settings_bar_bg: DEFAULT_SETTINGS_BAR_BG.to_string(),
             history_alt_bg: DEFAULT_HISTORY_ALT_BG.to_string(),
+            history_separator_color: DEFAULT_HISTORY_SEPARATOR_COLOR
+                .to_string(),
         }
     }
 }
@@ -110,6 +117,12 @@ pub struct Config {
     pub restore_last_settings: bool,
     /// Whether the input field shows a live result preview / validity warning.
     pub live_feedback: bool,
+    /// Whether history entries alternate a background tint (zebra striping).
+    pub history_zebra: bool,
+    /// Blank lines inserted after each history entry's result.
+    pub history_spacing: usize,
+    /// Whether a separator line is drawn in the gap between history entries.
+    pub history_separator: bool,
     /// Theme colours.
     pub theme: Theme,
 }
@@ -126,6 +139,9 @@ impl Default for Config {
             glyphs: GlyphSet::default(),
             restore_last_settings: true,
             live_feedback: true,
+            history_zebra: false,
+            history_spacing: 1,
+            history_separator: true,
             theme: Theme::default(),
         }
     }

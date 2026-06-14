@@ -18,8 +18,8 @@ use crate::domain::history::HistoryEntry;
 use crate::tui::widgets::truncate;
 use crate::tui::{App, Mode, colors, text_edit};
 
-/// Screen lines used per history entry (input line + result line).
-const LINES_PER_ENTRY: usize = 2;
+/// Content lines per history entry (input line + result line), before spacing.
+const CONTENT_LINES: usize = 2;
 
 /// Renders the history list into `area`.
 pub fn render(frame: &mut Frame, area: Rect, app: &App) {
@@ -48,18 +48,21 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         return;
     }
 
-    let visible = (height / LINES_PER_ENTRY).max(1);
+    let spacing = app.history_spacing();
+    let per_entry = CONTENT_LINES + spacing;
+    let visible = (height / per_entry).max(1);
     app.set_view_height(visible);
     let offset = visible_offset(app, total, visible);
     let end = (offset + visible).min(total);
 
-    let mut lines: Vec<Line> = Vec::with_capacity((end - offset) * 2);
+    let mut lines: Vec<Line> = Vec::with_capacity((end - offset) * per_entry);
     for (index, entry) in
         entries.iter().enumerate().skip(offset).take(end - offset)
     {
         let bg = row_bg(app, index);
         lines.push(input_line(app, entry, index, width, bg));
         lines.push(result_line(app, entry, width, bg));
+        push_gap(&mut lines, spacing, app.history_separator(), width);
     }
     frame.render_widget(Paragraph::new(lines), inner);
 
@@ -95,7 +98,7 @@ fn row_bg(app: &App, index: usize) -> Option<Color> {
     } else if app.selected() == Some(index) {
         Some(colors::SELECTION_BG)
     } else if index % 2 == 1 {
-        Some(app.history_alt_bg())
+        app.history_alt_bg()
     } else {
         None
     }
@@ -128,6 +131,29 @@ fn result_line(
     let padding = width.saturating_sub(text.width());
     let spans = vec![Span::raw(" ".repeat(padding)), Span::styled(text, style)];
     styled_row(Line::from(spans), bg)
+}
+
+/// Pushes the `spacing` gap lines after an entry. When a separator colour is
+/// given, the last gap line is a full-width rule; the rest stay blank.
+fn push_gap(
+    lines: &mut Vec<Line<'static>>,
+    spacing: usize,
+    separator: Option<Color>,
+    width: usize,
+) {
+    for i in 0..spacing {
+        if i + 1 == spacing
+            && let Some(color) = separator
+        {
+            let rule = "\u{2500}".repeat(width);
+            lines.push(Line::from(Span::styled(
+                rule,
+                Style::default().fg(color),
+            )));
+        } else {
+            lines.push(Line::default());
+        }
+    }
 }
 
 /// Applies the row background to a line, if any.

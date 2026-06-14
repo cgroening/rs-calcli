@@ -73,6 +73,9 @@ pub struct App {
     highlight: Highlight,
     settings_bar_bg: Color,
     history_alt_bg: Color,
+    history_zebra: bool,
+    history_spacing: usize,
+    history_separator: Option<Color>,
     glyphs: GlyphSet,
     live_feedback: bool,
     input: String,
@@ -98,6 +101,11 @@ impl App {
             highlight: Highlight::from_theme(&config.theme),
             settings_bar_bg: parse_color(&config.theme.settings_bar_bg),
             history_alt_bg: parse_color(&config.theme.history_alt_bg),
+            history_zebra: config.history_zebra,
+            history_spacing: config.history_spacing,
+            history_separator: config
+                .history_separator
+                .then(|| parse_color(&config.theme.history_separator_color)),
             glyphs: config.glyphs,
             live_feedback: config.live_feedback,
             input: String::new(),
@@ -158,9 +166,20 @@ impl App {
         &self.highlight
     }
 
-    /// The zebra-striping background for alternating history entries.
-    pub fn history_alt_bg(&self) -> Color {
-        self.history_alt_bg
+    /// The zebra-striping background for alternating history entries, or `None`
+    /// when zebra striping is disabled.
+    pub fn history_alt_bg(&self) -> Option<Color> {
+        self.history_zebra.then_some(self.history_alt_bg)
+    }
+
+    /// Blank lines inserted after each history entry's result.
+    pub fn history_spacing(&self) -> usize {
+        self.history_spacing
+    }
+
+    /// The colour of the separator line between entries, or `None` when off.
+    pub fn history_separator(&self) -> Option<Color> {
+        self.history_separator
     }
 
     /// The calculator service.

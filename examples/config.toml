@@ -34,6 +34,15 @@ restore_last_settings = true
 # Show a live result preview / validity warning on the input border as you type.
 live_feedback = true
 
+# Tint every second history entry (zebra striping); uses theme.history_alt_bg.
+history_zebra = false
+
+# Blank lines inserted after each history entry's result.
+history_spacing = 1
+
+# Draw a separator line in the gap between history entries (needs spacing >= 1).
+history_separator = true
+
 [theme]
 # Accent colour as #rrggbb or a name (cyan, green, magenta, yellow, blue).
 accent_color = "#6dd0ff"
@@ -51,5 +60,8 @@ ans_color = "#7dcfff"
 # Background of the full-width settings bar (below the input).
 settings_bar_bg = "#252525"
 
-# Background tint of every second history entry (zebra striping).
+# Background tint of every second history entry (only when history_zebra = true).
 history_alt_bg = "#1a1a1a"
+
+# Colour of the separator line between history entries (when history_separator).
+history_separator_color = "#3e3e3e"

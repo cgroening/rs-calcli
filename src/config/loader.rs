@@ -27,6 +27,9 @@ struct RawConfig {
     glyphs: Option<GlyphSet>,
     restore_last_settings: Option<bool>,
     live_feedback: Option<bool>,
+    history_zebra: Option<bool>,
+    history_spacing: Option<usize>,
+    history_separator: Option<bool>,
     theme: Option<RawTheme>,
 }
 
@@ -43,6 +46,7 @@ struct RawTheme {
     ans_color: Option<String>,
     settings_bar_bg: Option<String>,
     history_alt_bg: Option<String>,
+    history_separator_color: Option<String>,
 }
 
 /// Loads the configuration from the default config path.
@@ -87,6 +91,13 @@ fn merge(raw: RawConfig) -> Config {
             .restore_last_settings
             .unwrap_or(defaults.restore_last_settings),
         live_feedback: raw.live_feedback.unwrap_or(defaults.live_feedback),
+        history_zebra: raw.history_zebra.unwrap_or(defaults.history_zebra),
+        history_spacing: raw
+            .history_spacing
+            .unwrap_or(defaults.history_spacing),
+        history_separator: raw
+            .history_separator
+            .unwrap_or(defaults.history_separator),
         theme: merge_theme(raw.theme),
     }
 }
@@ -109,6 +120,9 @@ fn merge_theme(raw: Option<RawTheme>) -> Theme {
             .settings_bar_bg
             .unwrap_or(defaults.settings_bar_bg),
         history_alt_bg: raw.history_alt_bg.unwrap_or(defaults.history_alt_bg),
+        history_separator_color: raw
+            .history_separator_color
+            .unwrap_or(defaults.history_separator_color),
     }
 }
 
