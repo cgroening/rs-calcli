@@ -19,7 +19,7 @@ const DEFAULT_DECIMALS: usize = 3;
 const DEFAULT_MAX_HISTORY: usize = 500;
 
 /// Default accent colour (hex), a muted cyan.
-pub const DEFAULT_ACCENT_COLOR: &str = "#6dd0ff";
+pub const DEFAULT_ACCENT_COLOR: &str = "#82e38e";
 
 /// Which glyph set the TUI renders.
 #[derive(
