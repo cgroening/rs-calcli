@@ -6,5 +6,6 @@ pub mod error;
 pub mod evaluator;
 pub mod expression;
 pub mod format;
+pub mod highlight;
 pub mod history;
 pub mod variables;

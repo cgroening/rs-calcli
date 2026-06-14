@@ -336,6 +336,132 @@ fn cell_style(i: usize, caret: LineCaret, base: Style) -> Style {
     base
 }
 
+/// Like [`single_line_spans`], but the base style of each character `g` is
+/// `styles[g]` (its highlight colour). `styles` is indexed by the value's
+/// character position; missing entries fall back to the default style.
+/// Adapted (single-line only) from numcli's `single_line_spans_styled`.
+pub fn single_line_spans_styled(
+    value: &str,
+    cursor: TextCursor,
+    width: usize,
+    styles: &[Style],
+) -> Vec<Span<'static>> {
+    let width = width.max(1);
+    let chars: Vec<char> = value.chars().collect();
+    let n = chars.len();
+    let pos = cursor.pos.min(n);
+    let end_cursor = pos >= n;
+    if n + usize::from(end_cursor) <= width {
+        let caret = LineCaret {
+            cursor: Some(pos),
+            selection: cursor.selection(),
+        };
+        return cursor_spans_styled(value, caret, styles);
+    }
+    let max_start = (n + usize::from(end_cursor)).saturating_sub(width - 1);
+    let room = width.saturating_sub(2).max(1);
+    let start = if pos < room {
+        0
+    } else {
+        (pos + 1 - room).min(max_start)
+    };
+    let lead = usize::from(start > 0);
+    let reach = (n - start) + usize::from(end_cursor) <= width - lead;
+    let show = if reach { n - start } else { width - (lead + 1) };
+    let visible_end = start + show;
+    let visible: String = chars[start..visible_end.min(n)].iter().collect();
+    let visible_styles =
+        &styles[start.min(styles.len())..visible_end.min(n).min(styles.len())];
+    let dim = Style::default().add_modifier(Modifier::DIM);
+    let mut spans = Vec::new();
+    if lead == 1 {
+        spans.push(Span::styled("\u{2026}".to_string(), dim));
+    }
+    let col = (pos >= start && pos <= visible_end).then(|| pos - start);
+    let selection = cursor
+        .selection()
+        .and_then(|(s, e)| intersect(s, e, start, visible_end))
+        .map(|(s, e)| (s - start, e - start));
+    let caret = LineCaret {
+        cursor: col,
+        selection,
+    };
+    spans.extend(cursor_spans_styled(&visible, caret, visible_styles));
+    if !reach {
+        spans.push(Span::styled("\u{2026}".to_string(), dim));
+    }
+    spans
+}
+
+/// Like [`cursor_spans`], but each visible character `i` uses `styles[i]` as its
+/// base style (missing entries fall back to the default).
+pub fn cursor_spans_styled(
+    visible: &str,
+    caret: LineCaret,
+    styles: &[Style],
+) -> Vec<Span<'static>> {
+    let chars: Vec<char> = visible.chars().collect();
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut run = String::new();
+    let mut run_style = Style::default();
+    for (i, c) in chars.iter().enumerate() {
+        let base = styles.get(i).copied().unwrap_or_default();
+        let style = cell_style(i, caret, base);
+        if !run.is_empty() && style != run_style {
+            spans.push(Span::styled(std::mem::take(&mut run), run_style));
+        }
+        if run.is_empty() {
+            run_style = style;
+        }
+        run.push(*c);
+    }
+    if !run.is_empty() {
+        spans.push(Span::styled(run, run_style));
+    }
+    if caret.cursor == Some(chars.len()) {
+        spans.push(colors::cursor_block_span());
+    }
+    spans
+}
+
+/// Builds styled spans for `value` truncated to `width` characters (no cursor),
+/// appending a dim `…` when clipped. `styles` is indexed per character. Used for
+/// the read-only history rows.
+pub fn highlighted_spans(
+    value: &str,
+    styles: &[Style],
+    width: usize,
+) -> Vec<Span<'static>> {
+    let width = width.max(1);
+    let chars: Vec<char> = value.chars().collect();
+    let clipped = chars.len() > width;
+    let show = if clipped { width - 1 } else { chars.len() };
+
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut run = String::new();
+    let mut run_style = Style::default();
+    for (i, c) in chars.iter().take(show).enumerate() {
+        let style = styles.get(i).copied().unwrap_or_default();
+        if !run.is_empty() && style != run_style {
+            spans.push(Span::styled(std::mem::take(&mut run), run_style));
+        }
+        if run.is_empty() {
+            run_style = style;
+        }
+        run.push(*c);
+    }
+    if !run.is_empty() {
+        spans.push(Span::styled(run, run_style));
+    }
+    if clipped {
+        spans.push(Span::styled(
+            "\u{2026}".to_string(),
+            Style::default().add_modifier(Modifier::DIM),
+        ));
+    }
+    spans
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

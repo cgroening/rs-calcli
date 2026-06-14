@@ -11,10 +11,9 @@ use ratatui::widgets::{
 };
 use unicode_width::UnicodeWidthStr;
 
+use crate::domain::highlight;
 use crate::domain::history::HistoryEntry;
-use crate::tui::colors;
-use crate::tui::widgets::truncate;
-use crate::tui::{App, Mode};
+use crate::tui::{App, Mode, colors, text_edit};
 
 /// The gap between the input and the right-aligned result.
 const GAP: usize = 2;
@@ -97,29 +96,37 @@ fn row_line<'a>(
     spans.push(Span::styled(result_text, result_style));
 
     let line = Line::from(spans);
-    if app.selected() == Some(index) && !matches!(app.mode(), Mode::Edit(_)) {
+    if app.mode() == Mode::Edit(index) {
+        return line.style(Style::default().bg(colors::FOCUS_BG));
+    }
+    if app.selected() == Some(index) {
         return line.style(Style::default().bg(colors::SELECTION_BG));
     }
     line
 }
 
-/// The input spans for a row, switching to the live editor on the edited row.
+/// The input spans for a row: syntax-highlighted, switching to the live editor
+/// on the edited row.
 fn input_spans(
     app: &App,
     entry: &HistoryEntry,
     index: usize,
     input_width: usize,
 ) -> Vec<Span<'static>> {
+    let variables = app.service().variables();
     if app.mode() == Mode::Edit(index) {
-        let base = Style::default().bg(colors::FOCUS_BG);
-        return crate::tui::text_edit::single_line_spans(
+        let kinds = highlight::classify(app.input(), variables);
+        let styles = colors::styles_for(&kinds, app.highlight());
+        return text_edit::single_line_spans_styled(
             app.input(),
             app.cursor(),
             input_width,
-            base,
+            &styles,
         );
     }
-    vec![Span::raw(truncate(&entry.input, input_width))]
+    let kinds = highlight::classify(&entry.input, variables);
+    let styles = colors::styles_for(&kinds, app.highlight());
+    text_edit::highlighted_spans(&entry.input, &styles, input_width)
 }
 
 /// The right-hand result text and its style: the value (accent), the error

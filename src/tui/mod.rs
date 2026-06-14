@@ -27,9 +27,10 @@ use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 
 use crate::config::{Config, GlyphSet};
 use crate::domain::format::{AngleMode, Notation};
+use crate::domain::highlight;
 use crate::service::{CalcService, Preview};
 use crate::storage::{PersistedEntry, PersistedSettings, PersistedState};
-use crate::tui::colors::parse_color;
+use crate::tui::colors::{Highlight, parse_color};
 use crate::tui::terminal::{Tui, is_global_quit};
 use crate::tui::text_edit::TextCursor;
 use crate::tui::widgets::{ConfirmModal, ConfirmResult, hint_line};
@@ -69,6 +70,7 @@ enum Overlay {
 pub struct App {
     service: CalcService,
     accent: Color,
+    highlight: Highlight,
     glyphs: GlyphSet,
     live_feedback: bool,
     input: String,
@@ -91,6 +93,7 @@ impl App {
         App {
             service,
             accent: parse_color(&config.theme.accent_color),
+            highlight: Highlight::from_theme(&config.theme),
             glyphs: config.glyphs,
             live_feedback: config.live_feedback,
             input: String::new(),
@@ -144,6 +147,11 @@ impl App {
     /// The resolved accent colour.
     pub fn accent(&self) -> Color {
         self.accent
+    }
+
+    /// The resolved syntax-highlight styles.
+    pub fn highlight(&self) -> &Highlight {
+        &self.highlight
     }
 
     /// The calculator service.
@@ -751,12 +759,12 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App) {
                 Style::default().fg(app.accent).add_modifier(Modifier::BOLD),
             );
             let width = inner.width.saturating_sub(2) as usize;
+            let kinds =
+                highlight::classify(&app.input, app.service.variables());
+            let styles = colors::styles_for(&kinds, &app.highlight);
             let mut spans = vec![prompt];
-            spans.extend(text_edit::single_line_spans(
-                &app.input,
-                app.cursor,
-                width,
-                Style::default(),
+            spans.extend(text_edit::single_line_spans_styled(
+                &app.input, app.cursor, width, &styles,
             ));
             Line::from(spans)
         }
@@ -1005,6 +1013,17 @@ mod tests {
         let screen = render_to_string(&app);
         assert!(screen.contains('\u{26a0}'));
         assert!(!screen.contains("= 5"));
+    }
+
+    #[test]
+    fn highlighted_input_renders_without_panicking() {
+        let mut app = test_app();
+        for c in "sin(pi)+x".chars() {
+            app.handle_key(key(KeyCode::Char(c)));
+        }
+        // The styled render path must preserve the typed characters.
+        let screen = render_to_string(&app);
+        assert!(screen.contains("sin(pi)+x"));
     }
 
     #[test]

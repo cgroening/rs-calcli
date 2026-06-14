@@ -37,3 +37,13 @@ live_feedback = true
 [theme]
 # Accent colour as #rrggbb or a name (cyan, green, magenta, yellow, blue).
 accent_color = "#6dd0ff"
+
+# Syntax-highlight colours for the expression (input, history and editing).
+# Operators are always rendered bold, parentheses dim and `ans` underlined;
+# the rest use these (each defaults to the muted value shown).
+function_color = "#7aa2f7"
+constant_color = "#bb9af7"
+operator_color = "#ff9e64"
+number_color = "#9ece6a"
+variable_color = "#e0af68"
+ans_color = "#7dcfff"

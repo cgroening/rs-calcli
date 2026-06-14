@@ -24,6 +24,10 @@ the display is rounded.
   expanded. Function arguments use `;` (e.g. `max(1;2)`).
 - **Clipboard** — `y` copies the plain, full-precision value (no grouping); `Y`
   copies it as shown (rounded, grouped).
+- **Syntax highlighting** — functions, constants, operators (bold), numbers,
+  defined variables, parentheses and `ans` are coloured in the input, the
+  history and while editing. Colours are configurable in the `[theme]` table;
+  unknown identifiers stay neutral.
 - **Live feedback** — as you type, the input border shows a dim `= value`
   preview while the expression is valid and a subtle warning marker when it
   looks complete but won't parse (silent while still mid-typing). Toggle with
@@ -103,7 +107,8 @@ power), parentheses, constants `pi`, `e`, and functions such as `sqrt`, `exp`,
 `~/.config/calcli/`). Every key is optional. See
 [`examples/config.toml`](examples/config.toml) for the full list with defaults
 (notation, decimals, angle mode, separators, max history, glyph set, the
-`restore_last_settings` and `live_feedback` switches and the accent colour).
+`restore_last_settings` and `live_feedback` switches, and the accent and
+syntax-highlight colours).
 
 The session (settings, variables, history) is stored in `state.toml` under
 `$XDG_STATE_HOME/calcli/` (or `~/.local/state/calcli/`); see

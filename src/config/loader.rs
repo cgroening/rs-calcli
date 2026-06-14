@@ -35,6 +35,12 @@ struct RawConfig {
 #[serde(deny_unknown_fields)]
 struct RawTheme {
     accent_color: Option<String>,
+    function_color: Option<String>,
+    constant_color: Option<String>,
+    operator_color: Option<String>,
+    number_color: Option<String>,
+    variable_color: Option<String>,
+    ans_color: Option<String>,
 }
 
 /// Loads the configuration from the default config path.
@@ -91,6 +97,12 @@ fn merge_theme(raw: Option<RawTheme>) -> Theme {
     };
     Theme {
         accent_color: raw.accent_color.unwrap_or(defaults.accent_color),
+        function_color: raw.function_color.unwrap_or(defaults.function_color),
+        constant_color: raw.constant_color.unwrap_or(defaults.constant_color),
+        operator_color: raw.operator_color.unwrap_or(defaults.operator_color),
+        number_color: raw.number_color.unwrap_or(defaults.number_color),
+        variable_color: raw.variable_color.unwrap_or(defaults.variable_color),
+        ans_color: raw.ans_color.unwrap_or(defaults.ans_color),
     }
 }
 
@@ -171,6 +183,20 @@ mod tests {
         assert!(merge(RawConfig::default()).live_feedback);
         let raw: RawConfig = toml::from_str("live_feedback = false\n").unwrap();
         assert!(!merge(raw).live_feedback);
+    }
+
+    #[test]
+    fn theme_colours_default_and_override_individually() {
+        let defaults = merge(RawConfig::default()).theme;
+        assert_eq!(defaults, Theme::default());
+
+        let raw: RawConfig =
+            toml::from_str("[theme]\nfunction_color = \"#112233\"\n").unwrap();
+        let theme = merge(raw).theme;
+        assert_eq!(theme.function_color, "#112233");
+        // Other colours keep their defaults.
+        assert_eq!(theme.constant_color, Theme::default().constant_color);
+        assert_eq!(theme.accent_color, Theme::default().accent_color);
     }
 
     #[test]

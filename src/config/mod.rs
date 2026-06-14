@@ -21,6 +21,14 @@ const DEFAULT_MAX_HISTORY: usize = 500;
 /// Default accent colour (hex), a muted cyan.
 pub const DEFAULT_ACCENT_COLOR: &str = "#82e38e";
 
+/// Default syntax-highlight colours (muted, dark-background friendly).
+pub const DEFAULT_FUNCTION_COLOR: &str = "#7aa2f7";
+pub const DEFAULT_CONSTANT_COLOR: &str = "#bb9af7";
+pub const DEFAULT_OPERATOR_COLOR: &str = "#ff9e64";
+pub const DEFAULT_NUMBER_COLOR: &str = "#9ece6a";
+pub const DEFAULT_VARIABLE_COLOR: &str = "#e0af68";
+pub const DEFAULT_ANS_COLOR: &str = "#7dcfff";
+
 /// Which glyph set the TUI renders.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize,
@@ -40,12 +48,30 @@ pub enum GlyphSet {
 pub struct Theme {
     /// Accent colour name or `#rrggbb` for borders, the active mode and labels.
     pub accent_color: String,
+    /// Syntax-highlight colour for built-in functions (e.g. `sin`).
+    pub function_color: String,
+    /// Syntax-highlight colour for constants (`pi`, `e`).
+    pub constant_color: String,
+    /// Syntax-highlight colour for operators (rendered bold).
+    pub operator_color: String,
+    /// Syntax-highlight colour for numeric literals.
+    pub number_color: String,
+    /// Syntax-highlight colour for defined variables.
+    pub variable_color: String,
+    /// Syntax-highlight colour for the `ans` keyword (rendered underlined).
+    pub ans_color: String,
 }
 
 impl Default for Theme {
     fn default() -> Self {
         Theme {
             accent_color: DEFAULT_ACCENT_COLOR.to_string(),
+            function_color: DEFAULT_FUNCTION_COLOR.to_string(),
+            constant_color: DEFAULT_CONSTANT_COLOR.to_string(),
+            operator_color: DEFAULT_OPERATOR_COLOR.to_string(),
+            number_color: DEFAULT_NUMBER_COLOR.to_string(),
+            variable_color: DEFAULT_VARIABLE_COLOR.to_string(),
+            ans_color: DEFAULT_ANS_COLOR.to_string(),
         }
     }
 }

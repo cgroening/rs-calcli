@@ -8,6 +8,9 @@
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Span;
 
+use crate::config::Theme;
+use crate::domain::highlight::TokenKind;
+
 /// Background tint for a selected list row.
 pub const SELECTION_BG: Color = Color::Rgb(45, 55, 70);
 
@@ -56,6 +59,61 @@ pub fn dim() -> Style {
     Style::default().add_modifier(Modifier::DIM)
 }
 
+/// The resolved per-category styles for syntax highlighting.
+#[derive(Debug, Clone)]
+pub struct Highlight {
+    function: Style,
+    constant: Style,
+    operator: Style,
+    number: Style,
+    variable: Style,
+    paren: Style,
+    ans: Style,
+    plain: Style,
+}
+
+impl Highlight {
+    /// Builds the highlight styles from the configured theme colours.
+    ///
+    /// Operators are rendered bold, parentheses dim, and `ans` in the accent
+    /// colour; the rest use their configured colour.
+    pub fn from_theme(theme: &Theme) -> Self {
+        Highlight {
+            function: Style::default().fg(parse_color(&theme.function_color)),
+            constant: Style::default().fg(parse_color(&theme.constant_color)),
+            operator: Style::default()
+                .fg(parse_color(&theme.operator_color))
+                .add_modifier(Modifier::BOLD),
+            number: Style::default().fg(parse_color(&theme.number_color)),
+            variable: Style::default().fg(parse_color(&theme.variable_color)),
+            paren: Style::default().add_modifier(Modifier::DIM),
+            ans: Style::default()
+                .fg(parse_color(&theme.ans_color))
+                .add_modifier(Modifier::UNDERLINED),
+            plain: Style::default(),
+        }
+    }
+
+    /// The style for a token kind.
+    pub fn style(&self, kind: TokenKind) -> Style {
+        match kind {
+            TokenKind::Function => self.function,
+            TokenKind::Constant => self.constant,
+            TokenKind::Operator => self.operator,
+            TokenKind::Number => self.number,
+            TokenKind::Variable => self.variable,
+            TokenKind::Paren => self.paren,
+            TokenKind::Ans => self.ans,
+            TokenKind::Plain => self.plain,
+        }
+    }
+}
+
+/// Maps per-character token kinds to per-character styles.
+pub fn styles_for(kinds: &[TokenKind], highlight: &Highlight) -> Vec<Style> {
+    kinds.iter().map(|kind| highlight.style(*kind)).collect()
+}
+
 /// The block-cursor span (`█`) painted past the end of an input field.
 pub fn cursor_block_span() -> Span<'static> {
     Span::styled("\u{2588}", Style::default().fg(INPUT_CURSOR))
@@ -75,5 +133,27 @@ mod tests {
     fn falls_back_on_malformed_input() {
         assert_eq!(parse_color("not-a-color"), FALLBACK_ACCENT);
         assert_eq!(parse_color("#12"), FALLBACK_ACCENT);
+    }
+
+    #[test]
+    fn highlight_maps_theme_colours_and_makes_operators_bold() {
+        let theme = Theme::default();
+        let highlight = Highlight::from_theme(&theme);
+        assert_eq!(
+            highlight.style(TokenKind::Function).fg,
+            Some(parse_color(&theme.function_color))
+        );
+        let ans = highlight.style(TokenKind::Ans);
+        assert_eq!(ans.fg, Some(parse_color(&theme.ans_color)));
+        assert!(ans.add_modifier.contains(Modifier::UNDERLINED));
+        let operator = highlight.style(TokenKind::Operator);
+        assert_eq!(operator.fg, Some(parse_color(&theme.operator_color)));
+        assert!(operator.add_modifier.contains(Modifier::BOLD));
+        assert!(
+            highlight
+                .style(TokenKind::Paren)
+                .add_modifier
+                .contains(Modifier::DIM)
+        );
     }
 }
