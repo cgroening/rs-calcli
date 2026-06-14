@@ -51,7 +51,15 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         .map(|index| variable_line(app, &variables[index], index))
         .collect();
 
+    // Reserve a gutter column before the scrollbar when it is shown.
+    let overflow = variables.len() > list_height;
+    let list_width = if overflow {
+        inner.width.saturating_sub(1)
+    } else {
+        inner.width
+    };
     let list_area = Rect {
+        width: list_width,
         height: list_height as u16,
         ..inner
     };

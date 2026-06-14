@@ -33,11 +33,10 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(block, area);
 
     let height = inner.height as usize;
-    let width = inner.width as usize;
-    if height == 0 || width == 0 {
+    let full_width = inner.width as usize;
+    if height == 0 || full_width == 0 {
         return;
     }
-    app.set_history_width(width);
 
     let entries = app.service().history().entries();
     if entries.is_empty() {
@@ -46,14 +45,29 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             colors::dim(),
         ));
         frame.render_widget(Paragraph::new(hint), inner);
+        app.set_history_width(full_width);
         return;
     }
 
     let spacing = app.history_spacing();
     let separator = app.history_separator();
 
-    // Pass 1: line offsets per entry (cheap; no highlighting).
-    let starts = entry_starts(app, entries, width, spacing);
+    // Decide whether a scrollbar is needed at full width; if so, reserve one
+    // column as a gutter between the content and the scrollbar.
+    let probe = entry_starts(app, entries, full_width, spacing);
+    let overflow = *probe.last().expect("trailing sentinel") > height;
+    let width = if overflow {
+        full_width.saturating_sub(1).max(1)
+    } else {
+        full_width
+    };
+    app.set_history_width(width);
+
+    let starts = if overflow {
+        entry_starts(app, entries, width, spacing)
+    } else {
+        probe
+    };
     let total_lines = *starts.last().expect("starts has a trailing sentinel");
     let start_line = window_start(total_lines, height, app.selected(), &starts);
     app.set_view_height((height / (MIN_ENTRY_LINES + spacing)).max(1));
@@ -76,7 +90,12 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             }
         }
     }
-    frame.render_widget(Paragraph::new(lines), inner);
+    // Render into the (possibly narrowed) content area, leaving the gutter.
+    let content = Rect {
+        width: width as u16,
+        ..inner
+    };
+    frame.render_widget(Paragraph::new(lines), content);
 
     render_scrollbar(frame, area, total_lines, height, start_line);
 }

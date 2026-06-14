@@ -111,7 +111,16 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     let scroll = app.help_scroll().min(max_scroll);
     let visible: Vec<Line> =
         lines.into_iter().skip(scroll).take(height).collect();
-    frame.render_widget(Paragraph::new(visible), inner);
+    // Reserve a gutter column before the scrollbar when it is shown.
+    let content = Rect {
+        width: if max_scroll > 0 {
+            inner.width.saturating_sub(1)
+        } else {
+            inner.width
+        },
+        ..inner
+    };
+    frame.render_widget(Paragraph::new(visible), content);
 
     if max_scroll > 0 {
         let mut state = ScrollbarState::new(max_scroll).position(scroll);
