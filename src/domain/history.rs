@@ -80,9 +80,12 @@ impl History {
         self.entries.is_empty()
     }
 
-    /// The value of the most recent entry, i.e. the `ans` for the next input.
+    /// The most recent computed value, i.e. the `ans` for the next input.
+    ///
+    /// Lines without a value (notes or errors) are skipped, so a comment-only
+    /// note never breaks the `ans` chain.
     pub fn last_value(&self) -> Option<f64> {
-        self.entries.last().and_then(|entry| entry.value)
+        self.entries.iter().rev().find_map(|entry| entry.value)
     }
 
     /// Appends `entry`, dropping the oldest entry when over capacity.
@@ -110,25 +113,27 @@ impl History {
         self.entries.clear();
     }
 
-    /// Re-evaluates entries from `start` to the end, threading each value into
-    /// the next line's `ans`.
+    /// Re-evaluates entries from `start` to the end, threading the most recent
+    /// computed value into the next line's `ans`.
     ///
-    /// `evaluate` receives the line's input and its `ans` (the previous line's
-    /// value, or `None` for the first line) and returns the new value/error. It
-    /// is called in order, so a caller mutating a shared variable store sees the
-    /// effect of earlier assignments on later lines.
+    /// `evaluate` receives the line's input and its `ans` (the most recent value
+    /// produced above it, or `None` when there is none) and returns the new
+    /// value/error. Lines without a value (notes or errors) leave `ans`
+    /// unchanged, so they never break the chain. It is called in order, so a
+    /// caller mutating a shared variable store sees the effect of earlier
+    /// assignments on later lines.
     pub fn recompute_from<F>(&mut self, start: usize, mut evaluate: F)
     where
         F: FnMut(&str, Option<f64>) -> LineResult,
     {
+        let mut running =
+            self.entries[..start].iter().rev().find_map(|e| e.value);
         for index in start..self.entries.len() {
-            let ans = if index == 0 {
-                None
-            } else {
-                self.entries[index - 1].value
-            };
             let input = self.entries[index].input.clone();
-            let (value, error) = evaluate(&input, ans);
+            let (value, error) = evaluate(&input, running);
+            if value.is_some() {
+                running = value;
+            }
             let entry = &mut self.entries[index];
             entry.value = value;
             entry.error = error;
@@ -170,6 +175,23 @@ mod tests {
             history.entries().iter().map(|e| e.value).collect();
         assert_eq!(values, vec![Some(1.0), Some(2.0), Some(3.0)]);
         assert_eq!(history.last_value(), Some(3.0));
+    }
+
+    #[test]
+    fn recompute_skips_value_less_lines_when_threading_ans() {
+        fn maybe_increment(input: &str, ans: Option<f64>) -> LineResult {
+            if input == "note" {
+                (None, None)
+            } else {
+                (Some(ans.unwrap_or(0.0) + 1.0), None)
+            }
+        }
+        let mut history = history_of(&["a", "note", "b"]);
+        history.recompute_from(0, maybe_increment);
+        let values: Vec<Option<f64>> =
+            history.entries().iter().map(|e| e.value).collect();
+        // The note has no value and does not break the chain (`b` sees `a`).
+        assert_eq!(values, vec![Some(1.0), None, Some(2.0)]);
     }
 
     #[test]

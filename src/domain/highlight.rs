@@ -39,6 +39,8 @@ pub enum TokenKind {
     Paren,
     /// The `ans` keyword.
     Ans,
+    /// An inline comment (from `#` to the end of the line).
+    Comment,
     /// Anything else, including unknown identifiers and separators.
     Plain,
 }
@@ -54,6 +56,11 @@ pub fn classify(input: &str, variables: &VariableStore) -> Vec<TokenKind> {
     let mut index = 0;
     while index < chars.len() {
         let current = chars[index];
+        if current == crate::domain::expression::COMMENT_CHAR {
+            // Everything from here to the end of the line is a comment.
+            kinds[index..].fill(TokenKind::Comment);
+            break;
+        }
         if is_identifier_start(current) {
             let end = identifier_end(&chars, index);
             let name: String = chars[index..end].iter().collect();
@@ -204,6 +211,20 @@ mod tests {
                 ("x".to_string(), TokenKind::Variable),
                 ("*".to_string(), TokenKind::Operator),
                 ("y".to_string(), TokenKind::Plain),
+            ]
+        );
+    }
+
+    #[test]
+    fn inline_comment_colours_from_the_hash_to_the_end() {
+        assert_eq!(
+            runs("2+3 # the sum", &vars(&[])),
+            vec![
+                ("2".to_string(), TokenKind::Number),
+                ("+".to_string(), TokenKind::Operator),
+                ("3".to_string(), TokenKind::Number),
+                (" ".to_string(), TokenKind::Plain),
+                ("# the sum".to_string(), TokenKind::Comment),
             ]
         );
     }

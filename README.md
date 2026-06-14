@@ -103,6 +103,9 @@ power), parentheses, constants `pi`, `e`, and functions such as `sqrt`, `exp`,
 - `=name` — save the previous answer to `name`.
 - `name = expr` — evaluate and store. `ans`, `pi` and `e` are reserved.
 - SI prefixes on numbers: `k M G T m µ u n p` (e.g. `4.7k` → `4700`).
+- Comments: everything after `#` is ignored by the calculation but kept in the
+  history (e.g. `2*pi*r  # circumference`). A line that is only a comment is
+  kept as a note (no result); notes don't break the `ans` chain.
 
 ## Configuration
 

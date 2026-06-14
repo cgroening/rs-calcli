@@ -22,6 +22,19 @@ pub enum Statement {
     Expression(String),
 }
 
+/// The character that starts an inline comment (to the end of the line).
+pub const COMMENT_CHAR: char = '#';
+
+/// Returns the code part of `input`: everything before the first comment marker.
+/// The comment itself is kept by the caller (history/display) but never
+/// evaluated.
+pub fn strip_comment(input: &str) -> &str {
+    match input.split_once(COMMENT_CHAR) {
+        Some((code, _comment)) => code,
+        None => input,
+    }
+}
+
 /// SI prefixes accepted on input, mapped to their power-of-ten exponent.
 const INPUT_PREFIXES: &[(char, i32)] = &[
     ('p', -12),
@@ -178,6 +191,13 @@ pub fn looks_incomplete(input: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strip_comment_keeps_only_the_code_part() {
+        assert_eq!(strip_comment("2*pi*r # circumference"), "2*pi*r ");
+        assert_eq!(strip_comment("# just a note"), "");
+        assert_eq!(strip_comment("2+3"), "2+3");
+    }
 
     #[test]
     fn classify_detects_save_assign_and_expression() {

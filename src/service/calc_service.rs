@@ -183,15 +183,15 @@ impl CalcService {
     /// input still looks like it is being typed (so no warning is shown), and
     /// [`Preview::Invalid`] when a complete-looking input does not parse.
     pub fn preview(&self, input: &str) -> Preview {
-        let trimmed = input.trim();
-        if trimmed.is_empty() || trimmed.starts_with(':') {
+        // The comment is not part of the calculation; a comment-only line (or a
+        // command) shows no preview.
+        let code = expression::strip_comment(input).trim();
+        if code.is_empty() || code.starts_with(':') {
             return Preview::Empty;
         }
-        match self.preview_value(trimmed) {
+        match self.preview_value(code) {
             Some(value) => Preview::Value(value),
-            None if expression::looks_incomplete(trimmed) => {
-                Preview::Incomplete
-            }
+            None if expression::looks_incomplete(code) => Preview::Incomplete,
             None => Preview::Invalid,
         }
     }
@@ -266,7 +266,12 @@ fn evaluate_line(
     input: &str,
     ans: Option<f64>,
 ) -> LineResult {
-    match expression::classify(input) {
+    // Strip the inline comment; the full input is kept by the history.
+    let code = expression::strip_comment(input);
+    if code.trim().is_empty() {
+        return (None, None);
+    }
+    match expression::classify(code) {
         Statement::SaveAns(name) => save_ans(variables, &name, ans),
         Statement::Assign { name, expr } => {
             assign(evaluator, variables, settings, &name, &expr, ans)
@@ -502,5 +507,38 @@ mod tests {
         assert_eq!(service.history().len(), 1);
         // A reserved name is invalid, not a value.
         assert_eq!(service.preview("pi = 3"), Preview::Invalid);
+    }
+
+    #[test]
+    fn inline_comments_are_ignored_but_kept_in_history() {
+        let mut service = service();
+        let outcome = service.submit("2+3 # the sum");
+        assert_eq!(outcome.value, Some(5.0));
+        // The full input, including the comment, is stored.
+        assert_eq!(service.history().entries()[0].input, "2+3 # the sum");
+        // Comments work on assignments too.
+        service.submit("x = 5 # a note");
+        assert_eq!(service.variables().get("x"), Some(5.0));
+    }
+
+    #[test]
+    fn a_comment_only_line_is_a_note_that_passes_ans_through() {
+        let mut service = service();
+        service.submit("5");
+        let outcome = service.submit("# just a note");
+        assert_eq!(outcome.value, None);
+        assert_eq!(outcome.error, None);
+        assert_eq!(service.history().entries()[1].input, "# just a note");
+        // The note does not break the `ans` chain.
+        service.submit("ans + 1");
+        assert_eq!(service.history().entries()[2].value, Some(6.0));
+    }
+
+    #[test]
+    fn preview_ignores_comments() {
+        let mut service = service();
+        service.submit("2");
+        assert_eq!(service.preview("# note"), Preview::Empty);
+        assert_eq!(service.preview("ans+3 # sum"), Preview::Value(5.0));
     }
 }

@@ -69,6 +69,7 @@ pub struct Highlight {
     variable: Style,
     paren: Style,
     ans: Style,
+    comment: Style,
     plain: Style,
 }
 
@@ -90,6 +91,9 @@ impl Highlight {
             ans: Style::default()
                 .fg(parse_color(&theme.ans_color))
                 .add_modifier(Modifier::UNDERLINED),
+            comment: Style::default()
+                .fg(parse_color(&theme.comment_color))
+                .add_modifier(Modifier::ITALIC),
             plain: Style::default(),
         }
     }
@@ -104,6 +108,7 @@ impl Highlight {
             TokenKind::Variable => self.variable,
             TokenKind::Paren => self.paren,
             TokenKind::Ans => self.ans,
+            TokenKind::Comment => self.comment,
             TokenKind::Plain => self.plain,
         }
     }

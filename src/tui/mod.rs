@@ -412,7 +412,10 @@ impl App {
         if text.is_empty() {
             return;
         }
-        if let Some(command) = text.strip_prefix(':') {
+        // Drop the inline comment to detect a `:` command; otherwise the full
+        // text is submitted (a comment-only line becomes a note entry).
+        let code = crate::domain::expression::strip_comment(&text).trim();
+        if let Some(command) = code.strip_prefix(':') {
             let message = self.run_command(command);
             self.status = Some(message);
         } else {

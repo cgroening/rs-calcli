@@ -59,6 +59,7 @@ operator_color = "#fe7057"
 number_color = "#e5cb49"
 variable_color = "#b27cde"
 ans_color = "#7dcfff"
+comment_color = "#67c1e5"
 
 # Background of the full-width settings bar (below the input).
 settings_bar_bg = "#252525"

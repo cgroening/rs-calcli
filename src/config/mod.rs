@@ -28,6 +28,7 @@ pub const DEFAULT_OPERATOR_COLOR: &str = "#fe7057";
 pub const DEFAULT_NUMBER_COLOR: &str = "#e5cb49";
 pub const DEFAULT_VARIABLE_COLOR: &str = "#b27cde";
 pub const DEFAULT_ANS_COLOR: &str = "#7dcfff";
+pub const DEFAULT_COMMENT_COLOR: &str = "#67c1e5";
 
 /// Default background for the settings bar (a muted dark tint).
 pub const DEFAULT_SETTINGS_BAR_BG: &str = "#252525";
@@ -69,6 +70,8 @@ pub struct Theme {
     pub variable_color: String,
     /// Syntax-highlight colour for the `ans` keyword (rendered underlined).
     pub ans_color: String,
+    /// Syntax-highlight colour for inline comments (rendered italic).
+    pub comment_color: String,
     /// Background colour of the full-width settings bar.
     pub settings_bar_bg: String,
     /// Background tint of every second history entry (zebra striping).
@@ -87,6 +90,7 @@ impl Default for Theme {
             number_color: DEFAULT_NUMBER_COLOR.to_string(),
             variable_color: DEFAULT_VARIABLE_COLOR.to_string(),
             ans_color: DEFAULT_ANS_COLOR.to_string(),
+            comment_color: DEFAULT_COMMENT_COLOR.to_string(),
             settings_bar_bg: DEFAULT_SETTINGS_BAR_BG.to_string(),
             history_alt_bg: DEFAULT_HISTORY_ALT_BG.to_string(),
             history_separator_color: DEFAULT_HISTORY_SEPARATOR_COLOR
