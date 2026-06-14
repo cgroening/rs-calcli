@@ -154,6 +154,26 @@ pub fn substitute_identifier(expr: &str, name: &str, value: f64) -> String {
     re.replace_all(expr, format!("({value})")).into_owned()
 }
 
+/// Replaces every whole-word occurrence of `name` with `replacement` verbatim.
+///
+/// Unlike [`substitute_identifier`], the replacement is inserted as-is (the
+/// caller is expected to have wrapped it), so a unit-bearing literal such as
+/// `(50 kN)` can be substituted into a unit expression for rink.
+pub fn substitute_identifier_with(
+    expr: &str,
+    name: &str,
+    replacement: &str,
+) -> String {
+    let pattern = format!(r"\b{}\b", regex::escape(name));
+    let Ok(re) = Regex::new(&pattern) else {
+        return expr.to_string();
+    };
+    // `$` is special in a replacement string; use the closure form to insert
+    // the replacement literally (units never contain `$`, but be safe).
+    re.replace_all(expr, |_: &Captures| replacement.to_string())
+        .into_owned()
+}
+
 /// Whether `expr` references the identifier `name` at a word boundary.
 pub fn references(expr: &str, name: &str) -> bool {
     let pattern = format!(r"\b{}\b", regex::escape(name));

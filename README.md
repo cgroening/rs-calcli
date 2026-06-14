@@ -109,10 +109,15 @@ power), parentheses, constants `pi`, `e`, and functions such as `sqrt`, `exp`,
 - `=name` — save the previous answer to `name`.
 - `name = expr` — evaluate and store. `ans`, `pi` and `e` are reserved.
 - SI prefixes on numbers: `k M G T m µ u n p` (e.g. `4.7k` → `4700`).
-- Units & conversion: write a quantity as `value unit` (space-separated, e.g.
-  `123 MPa`) and convert with `->` (or `to`): `123 MPa -> bar`, `ans -> psi`,
-  `x = 50 kN` then `x -> N`. `ans` and variables keep their unit. Calculating
-  *with* units (e.g. `20 kN + 300 N`) is not supported yet — see `todo.md`.
+- Units, conversion & arithmetic: write a quantity as `value unit`
+  (space-separated, e.g. `123 MPa`) and convert with `->` (or `to`):
+  `123 MPa -> bar`, `1 l -> dm^3`, `100 km/h -> m/s`, `ans -> psi`, `x = 50 kN`
+  then `x -> N`. You can also calculate *with* units — `20 kN + 300 N` →
+  `20.3 kilonewton`, `1 m + 50 cm` → `1.5 meter`, `1 m * 2 m` → `2 meter^2`,
+  `2 kN / 4 m^2 -> kN/m^2` → `0.5 kN/m^2`. `ans` and variables keep their unit.
+  Units are powered by [`rink-core`](https://crates.io/crates/rink-core); a
+  conversion is shown in the unit you typed, while a derived result uses rink's
+  unit name (pin any unit with `->`). Exponents use `^` (`cm^3`, `m^2`).
 - Comments: everything after `#` is ignored by the calculation but kept in the
   history (e.g. `2*pi*r  # circumference`). A line that is only a comment is
   kept as a note (no result); notes don't break the `ans` chain.
@@ -139,8 +144,9 @@ load so the `ans` chain stays consistent with the active settings.
 
 Layered, with the composition root in `main.rs`:
 
-- `domain/` — pure core: evaluation (`Evaluator` trait + meval), expression
-  preprocessing, number formatting, variables, history (and its replay).
+- `domain/` — pure core: evaluation (`Evaluator` trait + meval), the `units`
+  engine (rink), expression preprocessing, number formatting, variables, history
+  (and its replay).
 - `service/` — `CalcService`: orchestration (submit / edit / delete + recompute,
   variables, settings).
 - `storage/` — `StateRepository` port + TOML implementation (`state.toml`).
@@ -148,8 +154,10 @@ Layered, with the composition root in `main.rs`:
 - `tui/` — the Ratatui front-end.
 - `util/` — paths, logging, clipboard, app metadata.
 
-The evaluation engine sits behind the `Evaluator` trait so a future unit-aware
-engine (planned, alongside a GUI) can replace it without touching the service.
+Dimensionless math runs through the `Evaluator` trait (meval), keeping full
+`f64` precision and the angle mode; anything involving units is routed to the
+`domain::units` wrapper around `rink-core`, which owns conversion and unit
+arithmetic.
 
 ## Development
 

@@ -362,42 +362,14 @@ fn assign(
     }
 }
 
-/// The message shown when a line tries to do arithmetic on units (not yet
-/// supported); only conversion via `->` is available.
-const UNIT_ARITHMETIC: &str =
-    "unit arithmetic not supported yet — use -> to convert";
-
-/// Evaluates `expr` into a [`Quantity`]: a conversion (`<source> -> <unit>`), a
-/// quantity (`<number> <unit>`) or a plain dimensionless expression.
+/// Evaluates `expr` into a [`Quantity`].
+///
+/// A sole `ans` or variable reference returns the stored quantity verbatim (so
+/// its unit and full precision survive). Otherwise the line is routed: a
+/// unit-free expression goes to meval (preserving functions and the angle
+/// mode), while anything involving units — a conversion, a unit literal, or
+/// arithmetic on unit-bearing values — goes to rink (see [`needs_units`]).
 fn eval_expression(
-    evaluator: &dyn Evaluator,
-    variables: &VariableStore,
-    settings: &FormatSettings,
-    expr: &str,
-    ans: Option<Quantity>,
-) -> Result<Quantity, String> {
-    if let Some((source, target)) = split_conversion(expr) {
-        let quantity =
-            eval_source(evaluator, variables, settings, source, ans)?;
-        let unit = units::parse(target.trim())
-            .ok_or_else(|| format!("unknown unit '{}'", target.trim()))?;
-        return quantity.convert_to(unit);
-    }
-    eval_source(evaluator, variables, settings, expr, ans)
-}
-
-/// Splits a conversion `<source> -> <unit>` (or `<source> to <unit>`).
-fn split_conversion(expr: &str) -> Option<(&str, &str)> {
-    if let Some((source, target)) = expr.split_once("->") {
-        return Some((source, target));
-    }
-    expr.split_once(" to ")
-}
-
-/// Evaluates `expr` into a [`Quantity`]: a sole `ans`/variable reference, a
-/// `<number> <unit>` quantity, or a plain dimensionless expression. Arithmetic
-/// mixing units errors with [`UNIT_ARITHMETIC`].
-fn eval_source(
     evaluator: &dyn Evaluator,
     variables: &VariableStore,
     settings: &FormatSettings,
@@ -411,37 +383,174 @@ fn eval_source(
     if let Some(quantity) = variables.get(trimmed) {
         return Ok(quantity.clone());
     }
-
-    let tokens: Vec<&str> = trimmed.split_whitespace().collect();
-    let unit_count = tokens.iter().filter(|t| units::is_unit(t)).count();
-    if unit_count > 1 {
-        return Err(UNIT_ARITHMETIC.to_string());
+    if needs_units(expr, variables, ans.as_ref()) {
+        return eval_with_rink(variables, settings, expr, ans);
     }
-    if unit_count == 1 {
-        let last = *tokens.last().expect("a token exists");
-        let (number, unit) = match units::parse(last) {
-            Some(unit) if tokens.len() >= 2 => (trim_last_token(trimmed), unit),
-            _ => return Err(UNIT_ARITHMETIC.to_string()),
-        };
-        let value = eval_number(evaluator, variables, settings, number, ans)?;
-        return Ok(Quantity::new(value, unit));
-    }
-
-    let value = eval_number(evaluator, variables, settings, trimmed, ans)?;
+    let value = eval_with_meval(evaluator, variables, settings, expr, ans)?;
     Ok(Quantity::dimensionless(value))
 }
 
-/// Everything in `expr` before its last whitespace-separated token.
-fn trim_last_token(expr: &str) -> &str {
-    expr.rsplit_once(char::is_whitespace)
-        .map(|(rest, _last)| rest.trim_end())
-        .unwrap_or("")
+/// Whether `expr` must be evaluated by the units engine rather than meval.
+///
+/// True when it converts (`->`/` to `), continues from a unit-bearing `ans`,
+/// references a unit-bearing variable, or contains a unit symbol. The constants
+/// `pi`/`e` and `ans` are never units, and defined variables are handled by the
+/// unit-bearing checks above, so they are excluded from the token scan.
+fn needs_units(
+    expr: &str,
+    variables: &VariableStore,
+    ans: Option<&Quantity>,
+) -> bool {
+    if split_conversion(expr).is_some() {
+        return true;
+    }
+    let leading_operator =
+        expr.trim_start().starts_with(['+', '-', '*', '/', '^']);
+    if ans.is_some_and(|a| !a.is_dimensionless())
+        && (leading_operator || expression::references(expr, "ans"))
+    {
+        return true;
+    }
+    for (name, value) in variables.iter() {
+        if !value.is_dimensionless() && expression::references(expr, name) {
+            return true;
+        }
+    }
+    expr.split(|c: char| !c.is_ascii_alphabetic())
+        .filter(|token| !token.is_empty())
+        .any(|token| {
+            !matches!(token, "pi" | "e" | "ans")
+                && variables.get(token).is_none()
+                && units::is_unit(token)
+        })
+}
+
+/// Splits a conversion `<source> -> <unit>` (or `<source> to <unit>`).
+fn split_conversion(expr: &str) -> Option<(&str, &str)> {
+    if let Some((source, target)) = expr.split_once("->") {
+        return Some((source, target));
+    }
+    expr.split_once(" to ")
+}
+
+/// Evaluates a unit-bearing `expr` through rink, substituting `ans` and any
+/// referenced variables as unit literals first.
+///
+/// The display unit is chosen so the value reads as the user expects:
+/// - a conversion (`… -> X`) is shown in the typed target `X` (rink reports the
+///   value already in `X`);
+/// - a simple quantity literal (`50 kN`) keeps the unit the user wrote;
+/// - otherwise rink's own unit name is used (e.g. `meter^2`, `kilonewton`),
+///   re-expressing the SI base value via [`units::scale_of`]. The user can pin
+///   any other unit with a `->`.
+fn eval_with_rink(
+    variables: &VariableStore,
+    settings: &FormatSettings,
+    expr: &str,
+    ans: Option<Quantity>,
+) -> Result<Quantity, String> {
+    let prepared = substitute_for_units(variables, settings, expr, ans)?;
+
+    // A conversion: rink validates the dimensions and reports the value in the
+    // target, so the typed target symbol is pinned directly.
+    if let Some((_, target)) = split_conversion(expr) {
+        let target = target.trim();
+        if !target.is_empty() {
+            let (value, _) = units::eval(&prepared)?;
+            return Ok(Quantity::new(value, target.to_string()));
+        }
+    }
+
+    let (base_value, unit) = units::eval(&prepared)?;
+    let Some(unit) = unit else {
+        return Ok(Quantity::dimensionless(base_value));
+    };
+    // Keep the user's own symbol for a plain `<number> <unit>` literal; for
+    // anything derived, use rink's name. Either way the value is in SI base
+    // units, so scale it into the chosen display unit.
+    let display_unit = simple_literal_unit(expr).unwrap_or(unit);
+    let value = base_value / units::scale_of(&display_unit)?;
+    Ok(Quantity::new(value, display_unit))
+}
+
+/// Substitutes `ans` and referenced variables into `expr` as rink literals,
+/// applying the light units preprocessing and `ans`-on-leading-operator rule.
+fn substitute_for_units(
+    variables: &VariableStore,
+    settings: &FormatSettings,
+    expr: &str,
+    ans: Option<Quantity>,
+) -> Result<String, String> {
+    let mut prepared = prepare_units_expr(expr, settings.decimal_separator);
+    let leading_operator =
+        prepared.trim_start().starts_with(['+', '-', '*', '/', '^']);
+    if leading_operator && ans.is_some() {
+        prepared = format!("ans {prepared}");
+    }
+    if expression::references(&prepared, "ans") {
+        let value = ans
+            .as_ref()
+            .ok_or_else(|| "no previous answer".to_string())?;
+        prepared = expression::substitute_identifier_with(
+            &prepared,
+            "ans",
+            &quantity_literal(value),
+        );
+    }
+    for (name, value) in variables.iter() {
+        if expression::references(&prepared, name) {
+            prepared = expression::substitute_identifier_with(
+                &prepared,
+                name,
+                &quantity_literal(value),
+            );
+        }
+    }
+    Ok(prepared)
+}
+
+/// The unit symbol of a plain `<number> <unit>` literal (e.g. `"kN"` for
+/// `50 kN`), or `None` when `expr` is anything more complex.
+fn simple_literal_unit(expr: &str) -> Option<String> {
+    let (head, last) = expr.trim().rsplit_once(char::is_whitespace)?;
+    let head = head.trim();
+    let number_chars = |c: char| {
+        c.is_ascii_digit() || matches!(c, '.' | 'e' | 'E' | '+' | '-')
+    };
+    if head.is_empty()
+        || !head.chars().all(number_chars)
+        || !head.chars().any(|c| c.is_ascii_digit())
+        || !units::is_unit(last)
+    {
+        return None;
+    }
+    Some(last.to_string())
+}
+
+/// Renders a quantity as a rink-parseable literal (e.g. `(50 kN)`), for
+/// substituting `ans`/variables into a unit expression.
+fn quantity_literal(quantity: &Quantity) -> String {
+    match quantity.unit_symbol() {
+        Some(symbol) => format!("({} {})", quantity.display_value(), symbol),
+        None => format!("({})", quantity.display_value()),
+    }
+}
+
+/// Light preprocessing for the rink path: `**`→`^` and, in comma-decimal mode,
+/// the decimal mark to `.`. Spaces are kept (rink needs them between a number
+/// and its unit) and SI prefixes are left for rink to resolve.
+fn prepare_units_expr(expr: &str, decimal_separator: char) -> String {
+    let replaced = expr.replace("**", "^");
+    if decimal_separator == ',' {
+        replaced.replace(',', ".")
+    } else {
+        replaced
+    }
 }
 
 /// Evaluates a dimensionless numeric expression with meval, substituting `ans`
-/// and dimensionless variables. Referencing a unit-carrying value is arithmetic
-/// with units and errors with [`UNIT_ARITHMETIC`].
-fn eval_number(
+/// and dimensionless variables (the router guarantees no units are involved).
+fn eval_with_meval(
     evaluator: &dyn Evaluator,
     variables: &VariableStore,
     settings: &FormatSettings,
@@ -449,15 +558,6 @@ fn eval_number(
     ans: Option<Quantity>,
 ) -> Result<f64, String> {
     let prepared = expression::preprocess(expr, settings.decimal_separator);
-
-    let ans_has_unit = ans.as_ref().is_some_and(|a| !a.is_dimensionless());
-    let starts_with_operator =
-        prepared.trim_start().starts_with(['+', '-', '*', '/', '^']);
-    if ans_has_unit
-        && (starts_with_operator || expression::references(&prepared, "ans"))
-    {
-        return Err(UNIT_ARITHMETIC.to_string());
-    }
     let ans_number = ans
         .as_ref()
         .filter(|a| a.is_dimensionless())
@@ -466,17 +566,12 @@ fn eval_number(
     let prepared = expression::prepend_ans(&prepared, ans_number);
     let mut prepared = expression::substitute_ans(&prepared, ans_number);
     for (name, value) in variables.iter() {
-        if !expression::references(&prepared, name) {
-            continue;
-        }
-        if value.is_dimensionless() {
+        if expression::references(&prepared, name) && value.is_dimensionless() {
             prepared = expression::substitute_identifier(
                 &prepared,
                 name,
                 value.display_value(),
             );
-        } else {
-            return Err(UNIT_ARITHMETIC.to_string());
         }
     }
     evaluator
@@ -762,16 +857,82 @@ mod tests {
     }
 
     #[test]
-    fn unit_arithmetic_is_rejected_clearly() {
+    fn compound_and_volume_conversions_work() {
+        let mut service = service();
+        let litre = service.submit("1 l -> dm^3");
+        assert!((outval(&litre).unwrap() - 1.0).abs() < 1e-9);
+        let speed = service.submit("100 km/h -> m/s");
+        assert!((outval(&speed).unwrap() - 27.7777778).abs() < 1e-6);
+        assert_eq!(speed.value.unwrap().unit_symbol(), Some("m/s"));
+    }
+
+    #[test]
+    fn adding_compatible_units_auto_picks_a_unit() {
+        let mut service = service();
+        let outcome = service.submit("1 m + 50 cm");
+        assert!((outval(&outcome).unwrap() - 1.5).abs() < 1e-9);
+        assert!(
+            outcome
+                .value
+                .unwrap()
+                .unit_symbol()
+                .unwrap()
+                .contains("meter")
+        );
+    }
+
+    #[test]
+    fn addition_with_units_picks_a_single_unit() {
         let mut service = service();
         let outcome = service.submit("20 kN + 300 N");
-        assert!(outcome.error.unwrap().contains("not supported"));
+        let quantity = outcome.value.unwrap();
+        // 20 kN + 300 N = 20.3 kN, however rink spells the unit.
+        assert!((quantity.display_value() - 20.3).abs() < 1e-9);
+        assert!(quantity.unit_symbol().unwrap().contains("newton"));
+    }
+
+    #[test]
+    fn multiplying_quantities_yields_a_derived_unit() {
+        let mut service = service();
+        let outcome = service.submit("1 m * 2 m");
+        let quantity = outcome.value.unwrap();
+        assert!((quantity.display_value() - 2.0).abs() < 1e-9);
+        assert!(quantity.unit_symbol().unwrap().contains("meter"));
+    }
+
+    #[test]
+    fn dividing_quantities_pins_the_conversion_target() {
+        let mut service = service();
+        let outcome = service.submit("2 kN / 4 m^2 -> kN/m^2");
+        let quantity = outcome.value.unwrap();
+        assert!((quantity.display_value() - 0.5).abs() < 1e-9);
+        assert_eq!(quantity.unit_symbol(), Some("kN/m^2"));
+    }
+
+    #[test]
+    fn unit_arithmetic_with_a_unit_variable_routes_to_rink() {
+        let mut service = service();
+        service.submit("f = 20 kN");
+        let outcome = service.submit("f + 300 N");
+        let quantity = outcome.value.unwrap();
+        assert!((quantity.display_value() - 20.3).abs() < 1e-9);
     }
 
     #[test]
     fn an_incompatible_conversion_errors() {
         let mut service = service();
         let outcome = service.submit("5 N -> bar");
-        assert!(outcome.error.unwrap().contains("cannot convert"));
+        assert!(outcome.error.is_some());
+    }
+
+    #[test]
+    fn pure_math_is_unaffected_by_the_units_router() {
+        let mut service = service();
+        // `e` is a constant (rink knows it too) but must stay on meval.
+        assert!((outval(&service.submit("e^0")).unwrap() - 1.0).abs() < 1e-9);
+        // `sin` is a function, not a unit, and respects the angle mode.
+        service.toggle_angle_mode();
+        let outcome = service.submit("sin(90)");
+        assert!((outval(&outcome).unwrap() - 1.0).abs() < 1e-9);
     }
 }

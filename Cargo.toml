@@ -25,6 +25,9 @@ log = { version = "0.4", features = ["std"] }
 unicode-width = "0.2"
 # System clipboard for y/Y copy and Ctrl+C/X/V in the input (text only).
 arboard = { version = "3.6.1", default-features = false }
+# https://crates.io/crates/rink-core — units engine (conversion + unit arithmetic).
+# bundle-files embeds the units database so no data files are needed at runtime.
+rink-core = { version = "0.9.0", features = ["bundle-files"] }
 
 [profile.release]
 opt-level = 3

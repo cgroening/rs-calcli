@@ -318,10 +318,7 @@ mod tests {
     #[test]
     fn a_quantity_appends_its_unit() {
         let s = settings();
-        let bar =
-            Quantity::new(123.0, crate::domain::units::parse("MPa").unwrap())
-                .convert_to(crate::domain::units::parse("bar").unwrap())
-                .unwrap();
+        let bar = Quantity::new(1230.0, "bar");
         assert_eq!(format_display(&bar, &s), "1 230.000 bar");
         assert_eq!(format_plain(&bar, &s), "1230 bar");
     }
