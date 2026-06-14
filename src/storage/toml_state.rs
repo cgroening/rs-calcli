@@ -81,6 +81,7 @@ mod tests {
                 decimals: 5,
                 angle_mode: crate::domain::format::AngleMode::Deg,
                 decimal_separator: ",".to_string(),
+                trim_trailing_zeros: false,
             }),
             variables: [(
                 "x".to_string(),

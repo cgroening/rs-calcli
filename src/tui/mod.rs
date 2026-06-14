@@ -173,6 +173,7 @@ impl App {
                 decimals: settings.decimals,
                 angle_mode: settings.angle_mode,
                 decimal_separator: settings.decimal_separator.to_string(),
+                trim_trailing_zeros: settings.trim_trailing_zeros,
             }),
             variables,
             history,
@@ -338,6 +339,15 @@ impl App {
                     "decimal separator: {}",
                     self.service.settings().decimal_separator
                 ));
+            }
+            KeyCode::F(6) => {
+                self.service.toggle_trim_trailing_zeros();
+                let state = if self.service.settings().trim_trailing_zeros {
+                    "trimmed"
+                } else {
+                    "fixed"
+                };
+                self.status = Some(format!("trailing zeros: {state}"));
             }
             _ => return false,
         }
@@ -1041,10 +1051,16 @@ fn render_settings_bar(frame: &mut Frame, area: Rect, app: &App) {
         GlyphSet::Unicode => "unicode",
         GlyphSet::Ascii => "ascii",
     };
+    let trim = if settings.trim_trailing_zeros {
+        "trim"
+    } else {
+        "fixed"
+    };
     let values = [
         settings.angle_mode.label().to_string(),
         settings.notation.label().to_string(),
         format!("{} dp", settings.decimals),
+        trim.to_string(),
         settings.decimal_separator.to_string(),
         grouping,
         glyphs.to_string(),
@@ -1105,6 +1121,7 @@ fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
             ("F3", "deg/rad"),
             ("F4", "vars"),
             ("F5", ". ,"),
+            ("F6", "trim"),
             ("Enter", "calc"),
             ("\u{2191}", "history"),
             ("^Q", "quit"),
@@ -1237,7 +1254,9 @@ mod tests {
     fn settings_bar_shows_values_separated_by_pipes() {
         let app = test_app();
         let screen = render_to_string(&app);
-        assert!(screen.contains("RAD | DEC | 3 dp | . | space | unicode"));
+        assert!(
+            screen.contains("RAD | DEC | 3 dp | trim | . | space | unicode")
+        );
     }
 
     #[test]
@@ -1294,6 +1313,11 @@ mod tests {
         assert_eq!(app.service().settings().decimal_separator, '.');
         app.handle_key(key(KeyCode::F(5)));
         assert_eq!(app.service().settings().decimal_separator, ',');
+        // F6 flips trailing-zero trimming and reports it on the status line.
+        assert!(app.service().settings().trim_trailing_zeros);
+        app.handle_key(key(KeyCode::F(6)));
+        assert!(!app.service().settings().trim_trailing_zeros);
+        assert_eq!(app.status.as_deref(), Some("trailing zeros: fixed"));
     }
 
     #[test]

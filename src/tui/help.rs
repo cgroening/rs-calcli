@@ -62,6 +62,7 @@ const GROUPS: &[Group] = &[
             ("F2", "cycle notation (dec / sci / SI)"),
             ("F3", "toggle angle mode (deg / rad)"),
             ("F5", "toggle decimal separator (. / ,)"),
+            ("F6", "toggle trailing-zero trimming"),
             (":d[n] :s[n] :si[n]", "set notation and decimals"),
             (":deg :rad", "set the angle mode"),
             (":clear", "clear the history"),

@@ -15,6 +15,7 @@ fn service() -> CalcService {
         angle_mode: AngleMode::Rad,
         decimal_separator: '.',
         thousands_separator: " ".to_string(),
+        trim_trailing_zeros: false,
     };
     CalcService::new(
         Box::new(MevalEvaluator::new()),

@@ -23,6 +23,7 @@ struct RawConfig {
     angle_mode: Option<AngleMode>,
     decimal_separator: Option<String>,
     thousands_separator: Option<String>,
+    trim_trailing_zeros: Option<bool>,
     max_history: Option<usize>,
     glyphs: Option<GlyphSet>,
     restore_last_settings: Option<bool>,
@@ -88,6 +89,9 @@ fn merge(raw: RawConfig) -> Config {
         thousands_separator: raw
             .thousands_separator
             .unwrap_or(defaults.thousands_separator),
+        trim_trailing_zeros: raw
+            .trim_trailing_zeros
+            .unwrap_or(defaults.trim_trailing_zeros),
         max_history: raw.max_history.unwrap_or(defaults.max_history).max(1),
         glyphs: raw.glyphs.unwrap_or(defaults.glyphs),
         restore_last_settings: raw
@@ -212,6 +216,14 @@ mod tests {
         assert!(merge(RawConfig::default()).live_feedback);
         let raw: RawConfig = toml::from_str("live_feedback = false\n").unwrap();
         assert!(!merge(raw).live_feedback);
+    }
+
+    #[test]
+    fn trim_trailing_zeros_defaults_on_and_can_be_disabled() {
+        assert!(merge(RawConfig::default()).trim_trailing_zeros);
+        let raw: RawConfig =
+            toml::from_str("trim_trailing_zeros = false\n").unwrap();
+        assert!(!merge(raw).trim_trailing_zeros);
     }
 
     #[test]

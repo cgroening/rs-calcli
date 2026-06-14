@@ -116,6 +116,9 @@ pub struct Config {
     pub decimal_separator: char,
     /// Thousands group separator for display (e.g. a space; empty disables it).
     pub thousands_separator: String,
+    /// Whether trailing fractional zeros are dropped on display (`12` not
+    /// `12.000`); `decimals` still caps the precision.
+    pub trim_trailing_zeros: bool,
     /// Maximum number of history entries kept.
     pub max_history: usize,
     /// Which glyph set to render.
@@ -145,6 +148,7 @@ impl Default for Config {
             angle_mode: AngleMode::default(),
             decimal_separator: '.',
             thousands_separator: " ".to_string(),
+            trim_trailing_zeros: true,
             max_history: DEFAULT_MAX_HISTORY,
             glyphs: GlyphSet::default(),
             restore_last_settings: true,
@@ -167,6 +171,7 @@ impl Config {
             angle_mode: self.angle_mode,
             decimal_separator: self.decimal_separator,
             thousands_separator: self.thousands_separator.clone(),
+            trim_trailing_zeros: self.trim_trailing_zeros,
         }
     }
 }

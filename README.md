@@ -17,7 +17,9 @@ the display is rounded.
   math always uses the exact internal value.
 - **Variables** — save with `=name` (stores the last answer) or `name = expr`.
   Manage them in an overlay: insert, copy, delete, reset all. Persisted.
-- **Notation** — cycle decimal / scientific / SI-prefixed (`F2`).
+- **Notation** — cycle decimal / scientific / SI-prefixed (`F2`); trailing
+  fractional zeros are dropped by default (`12`, not `12.000`), toggle with `F6`
+  or the `trim_trailing_zeros` config key.
 - **Angle mode** — toggle degrees / radians for trig (`F3`).
 - **Lenient input** — spaces, `_` and the non-decimal one of `.`/`,` are
   accepted as thousands separators; SI prefixes like `3.3k`, `100u` are
@@ -91,6 +93,7 @@ and variable assignments stay consistent with the new order.
 | `F3` | toggle angle mode (deg / rad) |
 | `F4` | variables overlay |
 | `F5` | toggle decimal separator (`.` / `,`) |
+| `F6` | toggle trailing-zero trimming |
 | `Ctrl+Q` | quit (saving the session) |
 
 ### Typed commands (in the input)

@@ -99,6 +99,7 @@ fn resolve_settings(config: &Config, state: &PersistedState) -> FormatSettings {
     settings.notation = persisted.notation;
     settings.decimals = persisted.decimals;
     settings.angle_mode = persisted.angle_mode;
+    settings.trim_trailing_zeros = persisted.trim_trailing_zeros;
     if let Some(separator) = persisted.decimal_separator.chars().next()
         && matches!(separator, '.' | ',')
     {

@@ -21,6 +21,10 @@ decimal_separator = "."
 # Thousands group separator used for display (a space by default; "" disables).
 thousands_separator = " "
 
+# Drop trailing fractional zeros on display (12 instead of 12.000, 1.5 k instead
+# of 1.500 k). `decimals` still caps the precision. Toggle at runtime with F6.
+trim_trailing_zeros = true
+
 # Maximum number of history lines kept.
 max_history = 500
 

@@ -47,6 +47,15 @@ pub struct PersistedSettings {
     pub angle_mode: AngleMode,
     /// Active decimal mark, as a one-character string (`.` or `,`).
     pub decimal_separator: String,
+    /// Whether trailing fractional zeros are dropped on display. Defaults to
+    /// `true` so a state file written before this setting still loads.
+    #[serde(default = "default_trim_trailing_zeros")]
+    pub trim_trailing_zeros: bool,
+}
+
+/// The default for [`PersistedSettings::trim_trailing_zeros`] in older state.
+fn default_trim_trailing_zeros() -> bool {
+    true
 }
 
 /// One persisted history line: the raw input and its computed value (absent for

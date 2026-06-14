@@ -91,6 +91,8 @@ pub struct FormatSettings {
     pub decimal_separator: char,
     /// Thousands group separator for display (e.g. a space; empty disables it).
     pub thousands_separator: String,
+    /// Whether trailing fractional zeros are dropped (`12.000` shown as `12`).
+    pub trim_trailing_zeros: bool,
 }
 
 impl FormatSettings {
@@ -153,15 +155,43 @@ fn with_unit(number: String, quantity: &Quantity) -> String {
     }
 }
 
-/// Formats a bare `f64` according to the notation settings.
+/// Formats a bare `f64` according to the notation settings, optionally dropping
+/// trailing fractional zeros.
 fn format_number(value: f64, settings: &FormatSettings) -> String {
     if !value.is_finite() {
         return value.to_string();
     }
-    match settings.notation {
+    let formatted = match settings.notation {
         Notation::Decimal => format_decimal(value, settings),
         Notation::Scientific => format_scientific(value, settings),
         Notation::SiPrefixed => format_si(value, settings),
+    };
+    if settings.trim_trailing_zeros {
+        trim_optional_zeros(&formatted, settings.decimal_separator)
+    } else {
+        formatted
+    }
+}
+
+/// Drops trailing zeros from the fractional part of a formatted number, removing
+/// the decimal `mark` itself when nothing is left after it.
+///
+/// Only the run of digits immediately after `mark` is touched, so a trailing
+/// SI suffix (`" k"`) or scientific exponent (`"e3"`) is preserved and integer
+/// grouping (before the mark) is untouched.
+fn trim_optional_zeros(formatted: &str, mark: char) -> String {
+    let Some(mark_index) = formatted.find(mark) else {
+        return formatted.to_string();
+    };
+    let head = &formatted[..mark_index];
+    let after = &formatted[mark_index + mark.len_utf8()..];
+    let fraction_len = after.chars().take_while(char::is_ascii_digit).count();
+    let (fraction, suffix) = after.split_at(fraction_len);
+    let trimmed = fraction.trim_end_matches('0');
+    if trimmed.is_empty() {
+        format!("{head}{suffix}")
+    } else {
+        format!("{head}{mark}{trimmed}{suffix}")
     }
 }
 
@@ -254,6 +284,7 @@ mod tests {
             angle_mode: AngleMode::Rad,
             decimal_separator: '.',
             thousands_separator: " ".to_string(),
+            trim_trailing_zeros: false,
         }
     }
 
@@ -313,6 +344,40 @@ mod tests {
         let mut s = settings();
         s.decimal_separator = ',';
         assert_eq!(format_plain(&q(1234.5), &s), "1234,5");
+    }
+
+    #[test]
+    fn trimming_drops_trailing_zeros_across_notations() {
+        let mut s = settings();
+        s.trim_trailing_zeros = true;
+        // Decimal: whole numbers lose the mark, others keep significant digits.
+        assert_eq!(format_display(&q(12.0), &s), "12");
+        assert_eq!(format_display(&q(1234.5), &s), "1 234.5");
+        assert_eq!(format_display(&q(1.23), &s), "1.23");
+        // Scientific.
+        s.notation = Notation::Scientific;
+        assert_eq!(format_display(&q(1200.0), &s), "1.2e3");
+        assert_eq!(format_display(&q(1000.0), &s), "1e3");
+        // SI-prefixed (suffix preserved).
+        s.notation = Notation::SiPrefixed;
+        assert_eq!(format_display(&q(1500.0), &s), "1.5 k");
+        assert_eq!(format_display(&q(42.0), &s), "42");
+    }
+
+    #[test]
+    fn trimming_respects_a_comma_decimal_mark() {
+        let mut s = settings();
+        s.trim_trailing_zeros = true;
+        s.decimal_separator = ',';
+        s.thousands_separator = ".".to_string();
+        assert_eq!(format_display(&q(1234.5), &s), "1.234,5");
+        assert_eq!(format_display(&q(12.0), &s), "12");
+    }
+
+    #[test]
+    fn trimming_off_keeps_fixed_decimals() {
+        let s = settings();
+        assert_eq!(format_display(&q(12.0), &s), "12.000");
     }
 
     #[test]

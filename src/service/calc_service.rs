@@ -201,6 +201,12 @@ impl CalcService {
         self.recompute(0);
     }
 
+    /// Toggles whether trailing fractional zeros are dropped (display only, so
+    /// no recompute is needed).
+    pub fn toggle_trim_trailing_zeros(&mut self) {
+        self.settings.trim_trailing_zeros = !self.settings.trim_trailing_zeros;
+    }
+
     /// Renders a quantity for display (rounded, grouped) — for the `Y` copy.
     pub fn format_display(&self, value: &Quantity) -> String {
         format_display(value, &self.settings)
@@ -603,6 +609,7 @@ mod tests {
             angle_mode: AngleMode::Rad,
             decimal_separator: '.',
             thousands_separator: " ".to_string(),
+            trim_trailing_zeros: false,
         }
     }
 
