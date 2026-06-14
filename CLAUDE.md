@@ -41,6 +41,8 @@ Einheitenumrechnung ergänzt werden kann, ohne den Service zu ändern.
   Zusammenfassung, Prosa statt `# Arguments`-Listen); `//!` Modul-Doc oben.
 - **Zeilenlänge ≤ 80** in `.rs`; 4 Spaces; Trailing Commas in mehrzeiligen
   Listen; LF; Datei endet mit genau einem Newline.
+- **Gedankenstrich:** niemals den Geviertstrich `—` (em dash) verwenden. In
+  Code-Dateien `-` (Bindestrich), in `.md`-Dateien `–` (en dash).
 - **Logging** über `log` (Datei-Sink in `util/logging`), nie `println!`/
   `eprintln!` für Diagnose. Sichtbare TUI-Ausgabe ist kein Logging.
 - **Tests** werden immer mitgeliefert (`#[cfg(test)] mod tests` je Datei,

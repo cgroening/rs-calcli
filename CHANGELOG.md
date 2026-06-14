@@ -30,5 +30,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Rewrite as a [Ratatui](https://ratatui.rs) terminal UI: editable history with recompute, stored variables, `ans` chaining, and full-`f64` precision with display-only rounding.
 - Notation (decimal / scientific / SI-prefixed), angle mode (deg / rad) and decimal-separator toggles; configurable theme, colours and glyph set.
-- Syntax highlighting, a live result preview / validity warning, a growing soft-wrapping multi-line input field, a full-width settings bar, and history editing (reorder, insert, delete, clear — destructive actions confirmed).
+- Syntax highlighting, a live result preview / validity warning, a growing soft-wrapping multi-line input field, a full-width settings bar, and history editing (reorder, insert, delete, clear – destructive actions confirmed).
 - Inline `#` comments and comment-only note lines that pass `ans` through; session persistence of settings, variables and history.
