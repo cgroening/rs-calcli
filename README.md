@@ -48,6 +48,14 @@ cargo install --path .
 cargo run --release
 ```
 
+Start with `--demo` to fill the session with sample data (history, variables,
+unit conversions) for a quick tour — demo mode never writes to your saved
+session:
+
+```sh
+calcli --demo
+```
+
 ## Keys
 
 ### Input

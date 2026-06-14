@@ -7,6 +7,7 @@
 //! gathers stateless helpers. The binary wires them together in `main.rs`.
 
 pub mod config;
+pub mod demo;
 pub mod domain;
 pub mod service;
 pub mod storage;

@@ -29,15 +29,23 @@ fn main() -> ExitCode {
 }
 
 /// Loads everything, runs the TUI and persists the session.
+///
+/// With `--demo`, the session is seeded with sample data and is *not* saved on
+/// exit, so the real `state.toml` is left untouched.
 fn run() -> anyhow::Result<()> {
+    let demo = std::env::args().any(|arg| arg == "--demo");
     let config = load_config().context("loading configuration")?;
     let _ = logging::init(LevelFilter::Info, Some(&paths::log_file()));
 
     let repository = TomlStateRepository::new(paths::state_file());
-    let state = repository.load().unwrap_or_else(|error| {
-        log::warn!("ignoring unreadable state: {error}");
-        PersistedState::default()
-    });
+    let state = if demo {
+        calcli::demo::demo_state()
+    } else {
+        repository.load().unwrap_or_else(|error| {
+            log::warn!("ignoring unreadable state: {error}");
+            PersistedState::default()
+        })
+    };
 
     let service = build_service(&config, &state);
     let mut app = App::new(service, &config);
@@ -46,9 +54,11 @@ fn run() -> anyhow::Result<()> {
     tui::run(&mut app, &mut tui)?;
     drop(tui);
 
-    repository
-        .save(&app.persisted_state())
-        .context("saving the session")?;
+    if !demo {
+        repository
+            .save(&app.persisted_state())
+            .context("saving the session")?;
+    }
     Ok(())
 }
 
