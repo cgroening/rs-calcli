@@ -14,9 +14,9 @@ use regex::{Captures, Regex};
 /// What a single input line asks the calculator to do.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Statement {
-    /// `=name` — store the previous answer in a variable.
+    /// `=name` - store the previous answer in a variable.
     SaveAns(String),
-    /// `name = expr` — evaluate `expr` and store it in `name`.
+    /// `name = expr` - evaluate `expr` and store it in `name`.
     Assign { name: String, expr: String },
     /// A bare expression to evaluate.
     Expression(String),

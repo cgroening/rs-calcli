@@ -1,4 +1,4 @@
-# calcli — Projektregeln für Claude Code
+# calcli – Projektregeln für Claude Code
 
 `calcli` ist ein schneller Terminal-Taschenrechner (Ratatui-TUI) mit Verlauf,
 Zwischenspeicher (Variablen) und Ingenieur-Funktionen. Zielnutzer: Entwickler,
@@ -10,14 +10,14 @@ sichtbare Texte).
 Schichtentrennung mit Composition Root in `main.rs`, DI über Traits (DIP).
 Referenzprojekte für Stil und Aufbau: `mdtask`, `numcli`, `hop`.
 
-- `domain/` — reine Kernlogik: `error`, `evaluator` (Trait + `MevalEvaluator`),
+- `domain/` – reine Kernlogik: `error`, `evaluator` (Trait + `MevalEvaluator`),
   `expression` (Preprocessing), `history`, `variables`, `format`. Keine I/O.
-- `service/` — `calc_service`: Orchestrierung (submit/edit/delete + Recompute,
+- `service/` – `calc_service`: Orchestrierung (submit/edit/delete + Recompute,
   Variablen, Settings). Keine I/O.
-- `storage/` — `StateRepository`-Trait + TOML-Implementierung (`state.toml`).
-- `config/` — `Config` (+ Defaults), `loader` (RawConfig-Merge + env `CALCLI_*`).
-- `tui/` — Ratatui-Oberfläche (App, render, Event-Dispatch, Widgets).
-- `util/` — `paths`, `logging`, `clipboard`, `app_info`.
+- `storage/` – `StateRepository`-Trait + TOML-Implementierung (`state.toml`).
+- `config/` – `Config` (+ Defaults), `loader` (RawConfig-Merge + env `CALCLI_*`).
+- `tui/` – Ratatui-Oberfläche (App, render, Event-Dispatch, Widgets).
+- `util/` – `paths`, `logging`, `clipboard`, `app_info`.
 
 Die Berechnungs-Engine liegt hinter dem `Evaluator`-Trait, damit später eine
 Einheitenumrechnung ergänzt werden kann, ohne den Service zu ändern.

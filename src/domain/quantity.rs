@@ -3,8 +3,8 @@
 //! The value is the number shown to the user, paired with the unit it is
 //! expressed in (e.g. `1230` and `"bar"`). A quantity with no unit is
 //! dimensionless and behaves like a plain number, so the rest of the calculator
-//! treats `f64` results as dimensionless quantities. All dimensional reasoning —
-//! conversion, arithmetic, derived units — is done by [`crate::domain::units`]
+//! treats `f64` results as dimensionless quantities. All dimensional reasoning -
+//! conversion, arithmetic, derived units - is done by [`crate::domain::units`]
 //! (rink) when the expression is evaluated; this type just carries the result.
 
 /// A value paired with the unit it is expressed in.

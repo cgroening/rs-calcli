@@ -21,9 +21,9 @@ ratatui = "0.29"
 crossterm = "0.28"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
-# https://crates.io/crates/meval — expression parser/evaluator (f64).
+# https://crates.io/crates/meval - expression parser/evaluator (f64).
 meval = "0.2"
-# https://crates.io/crates/regex — word-boundary variable substitution.
+# https://crates.io/crates/regex - word-boundary variable substitution.
 regex = "1"
 thiserror = "2"
 anyhow = "1"
@@ -32,7 +32,7 @@ log = { version = "0.4", features = ["std"] }
 unicode-width = "0.2"
 # System clipboard for y/Y copy and Ctrl+C/X/V in the input (text only).
 arboard = { version = "3.6.1", default-features = false }
-# https://crates.io/crates/rink-core — units engine (conversion + unit arithmetic).
+# https://crates.io/crates/rink-core - units engine (conversion + unit arithmetic).
 # bundle-files embeds the units database so no data files are needed at runtime.
 rink-core = { version = "0.9.0", features = ["bundle-files"] }
 

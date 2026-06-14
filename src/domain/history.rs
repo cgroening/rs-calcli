@@ -190,7 +190,7 @@ mod tests {
     }
 
     /// An evaluator that ignores the input and returns `ans + 1`, so the value
-    /// chain becomes 1, 2, 3, ... — enough to test `ans` threading.
+    /// chain becomes 1, 2, 3, ... - enough to test `ans` threading.
     fn increment(_input: &str, ans: Option<Quantity>) -> LineResult {
         let previous = ans.map_or(0.0, |a| a.display_value());
         (Some(q(previous + 1.0)), None)

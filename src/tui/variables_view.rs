@@ -38,7 +38,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     let list_height = inner.height.saturating_sub(2) as usize;
     if variables.is_empty() {
         let empty = Paragraph::new(Line::from(Span::styled(
-            "no variables yet — use =name or name = expr",
+            "no variables yet - use =name or name = expr",
             colors::dim(),
         )));
         frame.render_widget(empty, inner);

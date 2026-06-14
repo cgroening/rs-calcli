@@ -1,4 +1,4 @@
-//! calcli — a fast terminal calculator (TUI) with history, variables and
+//! calcli - a fast terminal calculator (TUI) with history, variables and
 //! engineering helpers.
 //!
 //! The crate is organized into layers: [`domain`] holds the pure calculator

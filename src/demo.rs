@@ -10,7 +10,7 @@ use crate::storage::{PersistedEntry, PersistedState};
 
 /// The demo input lines, oldest first, shown as the history on `--demo`.
 const DEMO_INPUTS: &[&str] = &[
-    "# calcli demo — press F1 for help, Ctrl+Q to quit",
+    "# calcli demo - press F1 for help, Ctrl+Q to quit",
     "2 + 3 * 4",
     "ans ^ 2",
     "r = 5            # a radius",

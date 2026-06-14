@@ -207,12 +207,12 @@ impl CalcService {
         self.settings.trim_trailing_zeros = !self.settings.trim_trailing_zeros;
     }
 
-    /// Renders a quantity for display (rounded, grouped) — for the `Y` copy.
+    /// Renders a quantity for display (rounded, grouped) - for the `Y` copy.
     pub fn format_display(&self, value: &Quantity) -> String {
         format_display(value, &self.settings)
     }
 
-    /// Renders a quantity as a plain, full-precision value — for the `y` copy.
+    /// Renders a quantity as a plain, full-precision value - for the `y` copy.
     pub fn format_plain(&self, value: &Quantity) -> String {
         format_plain(value, &self.settings)
     }
@@ -373,8 +373,8 @@ fn assign(
 /// A sole `ans` or variable reference returns the stored quantity verbatim (so
 /// its unit and full precision survive). Otherwise the line is routed: a
 /// unit-free expression goes to meval (preserving functions and the angle
-/// mode), while anything involving units — a conversion, a unit literal, or
-/// arithmetic on unit-bearing values — goes to rink (see [`needs_units`]).
+/// mode), while anything involving units - a conversion, a unit literal, or
+/// arithmetic on unit-bearing values - goes to rink (see [`needs_units`]).
 fn eval_expression(
     evaluator: &dyn Evaluator,
     variables: &VariableStore,
@@ -446,9 +446,9 @@ fn split_conversion(expr: &str) -> Option<(&str, &str)> {
 /// - a conversion (`… -> X`) is shown in the typed target `X` (rink reports the
 ///   value already in `X`);
 /// - a simple quantity literal (`50 kN`) keeps the unit the user wrote;
-/// - otherwise rink's own unit name is used (e.g. `meter^2`, `kilonewton`),
-///   re-expressing the SI base value via [`units::scale_of`]. The user can pin
-///   any other unit with a `->`.
+/// - otherwise rink's unit name is shortened to symbols (`meter^2` → `m^2`,
+///   `kilonewton` → `kN`), re-expressing the SI base value via
+///   [`units::scale_of`]. The user can pin any other unit with a `->`.
 fn eval_with_rink(
     variables: &VariableStore,
     settings: &FormatSettings,
@@ -471,10 +471,12 @@ fn eval_with_rink(
     let Some(unit) = unit else {
         return Ok(Quantity::dimensionless(base_value));
     };
-    // Keep the user's own symbol for a plain `<number> <unit>` literal; for
-    // anything derived, use rink's name. Either way the value is in SI base
-    // units, so scale it into the chosen display unit.
-    let display_unit = simple_literal_unit(expr).unwrap_or(unit);
+    // Choose the display unit: the user's own symbol for a plain
+    // `<number> <unit>` literal, else rink's name shortened to symbols. The
+    // value is in SI base units, so scale it into that display unit (the
+    // shortened forms stay rink-parseable, so `scale_of` resolves them).
+    let display_unit = simple_literal_unit(expr)
+        .unwrap_or_else(|| units::prettify_unit(&unit));
     let value = base_value / units::scale_of(&display_unit)?;
     Ok(Quantity::new(value, display_unit))
 }
@@ -878,14 +880,7 @@ mod tests {
         let mut service = service();
         let outcome = service.submit("1 m + 50 cm");
         assert!((outval(&outcome).unwrap() - 1.5).abs() < 1e-9);
-        assert!(
-            outcome
-                .value
-                .unwrap()
-                .unit_symbol()
-                .unwrap()
-                .contains("meter")
-        );
+        assert_eq!(outcome.value.unwrap().unit_symbol(), Some("m"));
     }
 
     #[test]
@@ -893,9 +888,9 @@ mod tests {
         let mut service = service();
         let outcome = service.submit("20 kN + 300 N");
         let quantity = outcome.value.unwrap();
-        // 20 kN + 300 N = 20.3 kN, however rink spells the unit.
+        // 20 kN + 300 N = 20.3 kN, shown with the short unit symbol.
         assert!((quantity.display_value() - 20.3).abs() < 1e-9);
-        assert!(quantity.unit_symbol().unwrap().contains("newton"));
+        assert_eq!(quantity.unit_symbol(), Some("kN"));
     }
 
     #[test]
@@ -904,7 +899,7 @@ mod tests {
         let outcome = service.submit("1 m * 2 m");
         let quantity = outcome.value.unwrap();
         assert!((quantity.display_value() - 2.0).abs() < 1e-9);
-        assert!(quantity.unit_symbol().unwrap().contains("meter"));
+        assert_eq!(quantity.unit_symbol(), Some("m^2"));
     }
 
     #[test]

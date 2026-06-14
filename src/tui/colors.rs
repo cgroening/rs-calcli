@@ -1,7 +1,7 @@
 //! Central colour palette and styling helpers.
 //!
-//! One muted accent (resolved from config) carries meaning — borders, the
-//! active mode, labels — while fixed dim/tint colours mark selection, focus and
+//! One muted accent (resolved from config) carries meaning - borders, the
+//! active mode, labels - while fixed dim/tint colours mark selection, focus and
 //! the block cursor. Keeping them here (not scattered across views) is the
 //! single source of truth the style guide asks for.
 

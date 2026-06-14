@@ -66,6 +66,118 @@ pub fn scale_of(unit: &str) -> Result<f64, String> {
     Ok(value)
 }
 
+/// SI prefixes spelled out by rink, mapped to their symbol.
+const PREFIX_SYMBOLS: &[(&str, &str)] = &[
+    ("yotta", "Y"),
+    ("zetta", "Z"),
+    ("exa", "E"),
+    ("peta", "P"),
+    ("tera", "T"),
+    ("giga", "G"),
+    ("mega", "M"),
+    ("kilo", "k"),
+    ("hecto", "h"),
+    ("deca", "da"),
+    ("deci", "d"),
+    ("centi", "c"),
+    ("milli", "m"),
+    ("micro", "\u{00b5}"),
+    ("nano", "n"),
+    ("pico", "p"),
+    ("femto", "f"),
+    ("atto", "a"),
+];
+
+/// Unit names spelled out by rink, mapped to their conventional symbol.
+const BASE_SYMBOLS: &[(&str, &str)] = &[
+    ("meter", "m"),
+    ("gram", "g"),
+    ("second", "s"),
+    ("ampere", "A"),
+    ("kelvin", "K"),
+    ("mole", "mol"),
+    ("candela", "cd"),
+    ("newton", "N"),
+    ("pascal", "Pa"),
+    ("joule", "J"),
+    ("watt", "W"),
+    ("hertz", "Hz"),
+    ("coulomb", "C"),
+    ("volt", "V"),
+    ("ohm", "\u{03a9}"),
+    ("farad", "F"),
+    ("siemens", "S"),
+    ("weber", "Wb"),
+    ("tesla", "T"),
+    ("henry", "H"),
+    ("lumen", "lm"),
+    ("lux", "lx"),
+    ("becquerel", "Bq"),
+    ("gray", "Gy"),
+    ("sievert", "Sv"),
+    ("katal", "kat"),
+    ("liter", "l"),
+    ("tonne", "t"),
+    ("bar", "bar"),
+    ("radian", "rad"),
+    ("steradian", "sr"),
+    ("minute", "min"),
+    ("hour", "h"),
+    ("day", "d"),
+];
+
+/// Shortens a rink unit name to conventional symbols (`kilonewton` → `kN`,
+/// `meter / second` → `m/s`, `kilonewton / meter^2` → `kN/m^2`).
+///
+/// The result stays parseable by rink (exponents keep `^n`, division uses `/`),
+/// so a quantity carrying a shortened unit still round-trips through `ans` and
+/// variables. Unrecognized names are left unchanged.
+pub fn prettify_unit(name: &str) -> String {
+    name.split(" / ")
+        .map(prettify_factor)
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// Shortens one factor of a unit name (a space-separated product of words).
+fn prettify_factor(factor: &str) -> String {
+    factor
+        .split_whitespace()
+        .map(prettify_word)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Shortens a single unit word, preserving any `^n` exponent.
+fn prettify_word(word: &str) -> String {
+    let (stem, exponent) = match word.split_once('^') {
+        Some((stem, power)) => (stem, format!("^{power}")),
+        None => (word, String::new()),
+    };
+    let symbol = symbol_for(stem).unwrap_or_else(|| stem.to_string());
+    format!("{symbol}{exponent}")
+}
+
+/// The symbol for a (possibly prefixed) spelled-out unit word, if known.
+fn symbol_for(stem: &str) -> Option<String> {
+    if let Some((_, symbol)) =
+        BASE_SYMBOLS.iter().find(|(name, _)| *name == stem)
+    {
+        return Some((*symbol).to_string());
+    }
+    for (prefix, prefix_symbol) in PREFIX_SYMBOLS {
+        let Some(base) = stem.strip_prefix(prefix) else {
+            continue;
+        };
+        if let Some((_, symbol)) =
+            BASE_SYMBOLS.iter().find(|(name, _)| *name == base)
+        {
+            return Some(format!("{prefix_symbol}{symbol}"));
+        }
+    }
+    None
+}
+
 /// Whether `symbol` names a unit known to rink. Memoized.
 ///
 /// Note that rink also resolves the constants `pi` and `e`; callers that treat
@@ -138,6 +250,28 @@ mod tests {
     fn incompatible_units_error() {
         assert!(eval("5 N -> bar").is_err());
         assert!(eval("1 m + 1 s").is_err());
+    }
+
+    #[test]
+    fn prettify_unit_shortens_rink_names_to_symbols() {
+        assert_eq!(prettify_unit("kilonewton"), "kN");
+        assert_eq!(prettify_unit("meter^2"), "m^2");
+        assert_eq!(prettify_unit("meter / second"), "m/s");
+        assert_eq!(prettify_unit("kilonewton / meter^2"), "kN/m^2");
+        assert_eq!(prettify_unit("millimeter^3"), "mm^3");
+        assert_eq!(prettify_unit("pascal"), "Pa");
+        assert_eq!(prettify_unit("megajoule"), "MJ");
+        assert_eq!(prettify_unit("kilogram meter / second^2"), "kg m/s^2");
+        // An unknown name is left untouched.
+        assert_eq!(prettify_unit("frobnicate"), "frobnicate");
+    }
+
+    #[test]
+    fn prettified_symbols_are_still_parseable_by_rink() {
+        // The shortened forms must round-trip, since quantities carry them.
+        for symbol in ["kN", "m^2", "m/s", "kN/m^2", "mm^3"] {
+            assert!(is_unit(symbol) || eval(&format!("1 {symbol}")).is_ok());
+        }
     }
 
     #[test]
