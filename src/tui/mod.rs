@@ -36,7 +36,7 @@ use crate::storage::{
 use crate::tui::colors::{Highlight, parse_color};
 use crate::tui::terminal::{Tui, is_global_quit};
 use crate::tui::text_edit::TextCursor;
-use crate::tui::widgets::{ConfirmModal, ConfirmResult, hint_line};
+use crate::tui::widgets::{ConfirmModal, ConfirmResult, hint_lines};
 use crate::util::clipboard;
 
 /// Where keyboard focus sits in the main view.
@@ -878,15 +878,16 @@ fn copy_status(text: &str) -> String {
 fn render(app: &App, frame: &mut Frame) {
     let area = frame.area();
     let input_height = input_box_height(app, area.width);
+    let footer_height = footer_height(app, area.width).max(1);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),            // header
-            Constraint::Min(1),               // history
-            Constraint::Length(input_height), // input (grows with wrapping)
-            Constraint::Length(1),            // settings bar
-            Constraint::Length(1),            // status line
-            Constraint::Length(1),            // footer hints
+            Constraint::Length(1),             // header
+            Constraint::Min(1),                // history
+            Constraint::Length(input_height),  // input (grows with wrapping)
+            Constraint::Length(1),             // settings bar
+            Constraint::Length(1),             // status line
+            Constraint::Length(footer_height), // footer hints (wraps)
         ])
         .split(area);
 
@@ -1092,9 +1093,9 @@ fn render_status(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(Paragraph::new(line), area);
 }
 
-/// Renders the footer shortcut hints for the current state.
-fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
-    let hints: &[(&str, &str)] = match (&app.overlay, app.mode) {
+/// The footer shortcut hints for the current overlay and focus mode.
+fn footer_hints(app: &App) -> &'static [(&'static str, &'static str)] {
+    match (&app.overlay, app.mode) {
         (Overlay::Help, _) => &[("F1/Esc", "close help")],
         (Overlay::Variables, _) => &[
             ("\u{2191}\u{2193}", "select"),
@@ -1126,9 +1127,18 @@ fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
             ("\u{2191}", "history"),
             ("^Q", "quit"),
         ],
-    };
-    let line = hint_line(hints, app.accent, area.width as usize);
-    frame.render_widget(Paragraph::new(line), area);
+    }
+}
+
+/// The number of footer lines the hints wrap into at `width`.
+fn footer_height(app: &App, width: u16) -> u16 {
+    hint_lines(footer_hints(app), app.accent, width as usize).len() as u16
+}
+
+/// Renders the footer shortcut hints, wrapping across the lines `area` allows.
+fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
+    let lines = hint_lines(footer_hints(app), app.accent, area.width as usize);
+    frame.render_widget(Paragraph::new(lines), area);
 }
 
 #[cfg(test)]
@@ -1410,7 +1420,9 @@ mod tests {
         // Clear the transient status (it would truncate with an ellipsis).
         app.handle_key(key(KeyCode::Esc));
 
-        let backend = TestBackend::new(16, 16);
+        // Narrow so the entry wraps; tall enough that the (now multi-line)
+        // footer does not crowd the history off-screen.
+        let backend = TestBackend::new(16, 24);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|frame| render(&app, frame)).unwrap();
         let buffer = terminal.backend().buffer().clone();

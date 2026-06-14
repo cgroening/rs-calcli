@@ -64,6 +64,46 @@ pub fn hint_line(
     Line::from(spans)
 }
 
+/// Lays out shortcut hints across as many lines as needed for `width`, wrapping
+/// rather than dropping the ones that do not fit (unlike [`hint_line`]). Always
+/// returns at least one line.
+pub fn hint_lines(
+    hints: &[(&str, &str)],
+    accent: Color,
+    width: usize,
+) -> Vec<Line<'static>> {
+    let key_style = Style::default().fg(accent).add_modifier(Modifier::DIM);
+    let desc_style = colors::dim();
+    let separator = Span::styled(" \u{00b7} ", colors::dim());
+
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut used = 0usize;
+    for (key, description) in hints {
+        let token_width = format!("{key} {description}").width();
+        // Start a new line when the next hint (plus its separator) overflows,
+        // but never break before the first hint of a line.
+        if !spans.is_empty() && used + 3 + token_width > width {
+            lines.push(Line::from(std::mem::take(&mut spans)));
+            used = 0;
+        }
+        if !spans.is_empty() {
+            spans.push(separator.clone());
+            used += 3;
+        }
+        spans.push(Span::styled(format!("{key} "), key_style));
+        spans.push(Span::styled(description.to_string(), desc_style));
+        used += token_width;
+    }
+    if !spans.is_empty() {
+        lines.push(Line::from(spans));
+    }
+    if lines.is_empty() {
+        lines.push(Line::from(""));
+    }
+    lines
+}
+
 /// A centred rectangle `width`×`height` (clamped to `area`), for overlays.
 pub fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
     let width = width.min(area.width);
@@ -142,5 +182,38 @@ impl ConfirmModal {
             Paragraph::new(text).block(block).wrap(Wrap { trim: true });
         frame.render_widget(Clear, rect);
         frame.render_widget(paragraph, rect);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const HINTS: &[(&str, &str)] =
+        &[("F1", "help"), ("F2", "notation"), ("F3", "deg/rad")];
+
+    #[test]
+    fn hint_lines_keep_every_hint_by_wrapping() {
+        // Too narrow for one row: all three hints still appear, across rows.
+        let lines = hint_lines(HINTS, Color::Reset, 12);
+        assert!(lines.len() > 1);
+        let text: String = lines
+            .iter()
+            .flat_map(|line| line.spans.iter().map(|s| s.content.clone()))
+            .collect();
+        assert!(text.contains("help"));
+        assert!(text.contains("notation"));
+        assert!(text.contains("deg/rad"));
+    }
+
+    #[test]
+    fn hint_lines_fit_on_one_row_when_wide_enough() {
+        let lines = hint_lines(HINTS, Color::Reset, 200);
+        assert_eq!(lines.len(), 1);
+    }
+
+    #[test]
+    fn hint_lines_returns_one_line_for_no_hints() {
+        assert_eq!(hint_lines(&[], Color::Reset, 80).len(), 1);
     }
 }
