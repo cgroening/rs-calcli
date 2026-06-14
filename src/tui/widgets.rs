@@ -34,15 +34,14 @@ pub fn truncate(text: &str, max_width: usize) -> String {
     out
 }
 
-/// Builds a footer hint line from `(key, description)` pairs: each key in the
-/// accent colour, each description dim, separated by ` · ` and truncated to
-/// `width`.
+/// Builds a footer hint line from `(key, description)` pairs: each key in dimmed
+/// accent, each description dim, separated by ` · ` and truncated to `width`.
 pub fn hint_line(
     hints: &[(&str, &str)],
     accent: Color,
     width: usize,
 ) -> Line<'static> {
-    let key_style = Style::default().fg(accent).add_modifier(Modifier::BOLD);
+    let key_style = Style::default().fg(accent).add_modifier(Modifier::DIM);
     let desc_style = colors::dim();
     let separator = Span::styled(" \u{00b7} ", colors::dim());
 
