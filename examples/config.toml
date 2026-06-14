@@ -1,0 +1,36 @@
+# Example calcli configuration.
+#
+# Copy to your config directory to customize defaults:
+#   $XDG_CONFIG_HOME/calcli/config.toml   (or ~/.config/calcli/config.toml)
+#
+# Every key is optional; omitted keys keep the built-in default shown below.
+
+# Default notation: "decimal", "scientific" or "siprefixed".
+notation = "decimal"
+
+# Fractional digits in decimal and scientific notation.
+decimals = 3
+
+# Default angle mode for trig functions: "rad" or "deg".
+angle_mode = "rad"
+
+# Decimal mark used for display and accepted on input: "." or ",".
+# (The other of . / , is always accepted as a thousands separator on input.)
+decimal_separator = "."
+
+# Thousands group separator used for display (a space by default; "" disables).
+thousands_separator = " "
+
+# Maximum number of history lines kept.
+max_history = 500
+
+# Glyph set: "unicode" or "ascii".
+glyphs = "unicode"
+
+# On startup, restore the last session's settings (true) or always start from
+# the defaults above (false). Variables and history are restored either way.
+restore_last_settings = true
+
+[theme]
+# Accent colour as #rrggbb or a name (cyan, green, magenta, yellow, blue).
+accent_color = "#6dd0ff"

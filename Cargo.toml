@@ -1,10 +1,30 @@
 [package]
 name = "calcli"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
+description = "Fast terminal calculator (TUI) with history, variables and engineering helpers"
+license = "MIT"
+
+[[bin]]
+name = "calcli"
+path = "src/main.rs"
 
 [dependencies]
-colored = "3.0.0"
-rustyline = "17.0.2"
+ratatui = "0.29"
+crossterm = "0.28"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+# https://crates.io/crates/meval — expression parser/evaluator (f64).
 meval = "0.2"
+# https://crates.io/crates/regex — word-boundary variable substitution.
 regex = "1"
+thiserror = "2"
+anyhow = "1"
+log = { version = "0.4", features = ["std"] }
+# Display-width measurement for aligning/truncating TUI columns (wide glyphs = 2).
+unicode-width = "0.2"
+# System clipboard for y/Y copy and Ctrl+C/X/V in the input (text only).
+arboard = { version = "3.6.1", default-features = false }
+
+[profile.release]
+opt-level = 3

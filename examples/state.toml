@@ -1,0 +1,29 @@
+# Example calcli session state, for trying out a pre-filled history.
+#
+# Copy to your state directory to load it on the next start:
+#   $XDG_STATE_HOME/calcli/state.toml   (or ~/.local/state/calcli/state.toml)
+#
+# calcli normally writes this file itself on exit; this sample shows the format.
+# History values are recomputed on load, so the `ans` chain stays consistent.
+
+[settings]
+notation = "decimal"
+decimals = 3
+angle_mode = "deg"
+decimal_separator = "."
+
+[variables]
+g = 9.81
+r = 2.0
+
+[[history]]
+input = "2 * pi * r"
+value = 12.566370614359172
+
+[[history]]
+input = "ans^2"
+value = 157.91367041742973
+
+[[history]]
+input = "g * 3"
+value = 29.43

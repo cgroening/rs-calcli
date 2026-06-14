@@ -1,102 +1,104 @@
-// https://crates.io/crates/colored
-use colored::Colorize;
+//! Composition root: load config and persisted state, wire the service and the
+//! TUI, run the event loop and save the session on exit.
 
-// https://crates.io/crates/rustyline
-use rustyline::error::ReadlineError;
-use rustyline::Editor;
-use rustyline::history::DefaultHistory;
+use std::process::ExitCode;
 
-mod parser;
-use parser::Parser;
+use anyhow::Context;
+use log::LevelFilter;
 
-mod commands;
-use commands::{CommandHandler, CommandResult};
+use calcli::config::{Config, load_config};
+use calcli::domain::evaluator::MevalEvaluator;
+use calcli::domain::format::FormatSettings;
+use calcli::domain::history::{History, HistoryEntry};
+use calcli::domain::variables::VariableStore;
+use calcli::service::CalcService;
+use calcli::storage::{PersistedState, StateRepository, TomlStateRepository};
+use calcli::tui::terminal::Tui;
+use calcli::tui::{self, App};
+use calcli::util::{logging, paths};
 
-
-fn main() {
-    let mut rl = Editor::<(), DefaultHistory>::new().expect(
-        "rustyline could not be initialized"
-    );
-
-    // Print app name
-    print!("{}", "calcli".blue().bold());
-    println!("{}", " – calulator for the command line".bold());
-    println!("Enter a mathematical expression to evaluate it or {} for more \
-              information.\n", "help".italic());
-
-    // Initialize parser and command handler
-    let mut parser = Parser::new();
-    let mut cmd_handler = CommandHandler::new();
-
-    // Start repl (read-eval-print loop)
-    loop {
-        let readline = rl.readline(
-            &format!("{}", ">>> ".to_string().magenta().bold())
-        );
-
-        match readline {
-            Ok(line) => {
-                let input = line.trim();
-
-                // Ignore empty input
-                if input.is_empty() {
-                    continue;
-                }
-
-                // Add input to history
-                let _ = rl.add_history_entry(input);
-
-                // Check if input is a command
-                if CommandHandler::is_command(input) {
-                    match cmd_handler.execute_command(input, parser.ans) {
-                        Ok(CommandResult::Quit) => {
-                            println!("{}", "Exiting".blue().bold());
-                            break;
-                        }
-                        Ok(CommandResult::Help) => {
-                            println!(
-                                "{}",
-                                "Help information not yet implemented.".yellow().bold()
-                            );
-                        }
-                        Ok(CommandResult::FormatChanged(msg)) => {
-                            println!("{}", msg.blue().bold());
-                        }
-                        Err(e) => {
-                            eprintln!("{}", e.red().bold());
-                        }
-                    }
-                } else {
-                    // Evaluate input with parser
-                    match parser.parse(input, &cmd_handler) {
-                        Ok(result) =>
-                            println!("{}", result.green().bold()),
-                        Err(e) =>
-                            eprintln!("{}", e.red().bold()),
-                    }
-                }
-            }
-
-            // Handle CTRL-C and CTRL-D
-            Err(ReadlineError::Interrupted) => {
-                println!(
-                    "{}",
-                    "(CTRL-C) Copying result to clipboard not yet implemented."
-                    .yellow().bold()
-                );
-                // TODO: Copy the last result to the clipboard
-                // let result = parser.ans;
-                // ...
-                continue;
-            }
-            Err(ReadlineError::Eof) => {
-                println!("{}", "\n(CTRL-D) Exiting...".yellow().bold());
-                break;
-            }
-            Err(err) => {
-                eprintln!("Error: {:?}", err);
-                break;
-            }
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("calcli: {error:#}");
+            ExitCode::FAILURE
         }
     }
+}
+
+/// Loads everything, runs the TUI and persists the session.
+fn run() -> anyhow::Result<()> {
+    let config = load_config().context("loading configuration")?;
+    let _ = logging::init(LevelFilter::Info, Some(&paths::log_file()));
+
+    let repository = TomlStateRepository::new(paths::state_file());
+    let state = repository.load().unwrap_or_else(|error| {
+        log::warn!("ignoring unreadable state: {error}");
+        PersistedState::default()
+    });
+
+    let service = build_service(&config, &state);
+    let mut app = App::new(service, &config);
+
+    let mut tui = Tui::new().context("initializing the terminal")?;
+    tui::run(&mut app, &mut tui)?;
+    drop(tui);
+
+    repository
+        .save(&app.persisted_state())
+        .context("saving the session")?;
+    Ok(())
+}
+
+/// Builds the calculator service from config and the restored state.
+fn build_service(config: &Config, state: &PersistedState) -> CalcService {
+    let settings = resolve_settings(config, state);
+    let variables = VariableStore::from_pairs(
+        state
+            .variables
+            .iter()
+            .map(|(name, value)| (name.clone(), *value)),
+    );
+    let entries = state
+        .history
+        .iter()
+        .map(|entry| HistoryEntry {
+            input: entry.input.clone(),
+            value: entry.value,
+            error: None,
+        })
+        .collect();
+    let history = History::from_entries(entries, config.max_history);
+
+    let mut service = CalcService::new(
+        Box::new(MevalEvaluator::new()),
+        settings,
+        history,
+        variables,
+    );
+    // Regenerate values/errors so restored entries match the active settings.
+    service.recompute_all();
+    service
+}
+
+/// Resolves the active settings: config defaults, overridden by the last
+/// session when `restore_last_settings` is enabled.
+fn resolve_settings(config: &Config, state: &PersistedState) -> FormatSettings {
+    let mut settings = config.format_settings();
+    if !config.restore_last_settings {
+        return settings;
+    }
+    let Some(persisted) = &state.settings else {
+        return settings;
+    };
+    settings.notation = persisted.notation;
+    settings.decimals = persisted.decimals;
+    settings.angle_mode = persisted.angle_mode;
+    if let Some(separator) = persisted.decimal_separator.chars().next()
+        && matches!(separator, '.' | ',')
+    {
+        settings.decimal_separator = separator;
+    }
+    settings
 }

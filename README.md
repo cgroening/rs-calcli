@@ -1,143 +1,136 @@
 # calcli
 
-A command-line calculator built with Rust, designed for quick mathematical evaluations with support for variables and previous answer references.
+A fast terminal calculator (TUI) with an editable history, stored variables and
+a few helpers engineers reach for. Built with [Ratatui](https://ratatui.rs).
 
-![screenshot](screenshots/sample_calculations_2.png)
+Type an expression, press Enter, keep going. The previous result is available as
+`ans`, every line stays in an editable history (editing a line recomputes
+everything below it), and results keep full `f64` precision internally even when
+the display is rounded.
 
 ## Features
 
-- **Expression evaluation**: Evaluate mathematical expressions using standard operators and functions
-- **Previous answer reference**: Use `ans` to reference the result from your last calculation
-- **Variable support**: Define and use variables in your calculations
-- **Operator shortcuts**: Start expressions with `+`, `-`, `*`, or `/` to automatically apply them to the previous answer
-- **Localization support**: Use point (`.`) comma (`,`) as decimal separator and semicolon (`;`) as argument separator
-- **Interactive REPL**: Color-coded output with command history
+- **History with recompute** — input on the left, result on the right. Edit any
+  earlier line and every line below is re-evaluated, so `ans` chains stay
+  correct.
+- **Full precision** — the rounded value you see is only for display; further
+  math always uses the exact internal value.
+- **Variables** — save with `=name` (stores the last answer) or `name = expr`.
+  Manage them in an overlay: insert, copy, delete, reset all. Persisted.
+- **Notation** — cycle decimal / scientific / SI-prefixed (`F2`).
+- **Angle mode** — toggle degrees / radians for trig (`F3`).
+- **Lenient input** — spaces, `_` and the non-decimal one of `.`/`,` are
+  accepted as thousands separators; SI prefixes like `3.3k`, `100u` are
+  expanded. Function arguments use `;` (e.g. `max(1;2)`).
+- **Clipboard** — `y` copies the plain, full-precision value (no grouping); `Y`
+  copies it as shown (rounded, grouped).
+- **Persistence** — settings, variables and history are saved on exit and
+  restored next time (settings restore is configurable).
 
-## Installation
+## Install
 
-```zsh
-# Clone the repository
-git clone https://github.com/yourusername/calcli.git
-cd calcli
-
-# Build and run
+```sh
+cargo install --path .
+# or run from the repo
 cargo run --release
 ```
 
-## Usage
+## Keys
 
-Start the calculator by running the executable. You'll be greeted with an interactive prompt:
+### Input
+| Key | Action |
+| --- | --- |
+| `Enter` | evaluate the expression |
+| `↑` | enter the history |
+| `Ctrl+Y` | copy the last result (plain) |
+| `Ctrl+C` / `X` / `V` | copy / cut / paste in the input |
+| `Esc` | clear the input |
 
+### History (after `↑`)
+| Key | Action |
+| --- | --- |
+| `↑` `↓` / `PgUp` `PgDn` / `Home` `End` | move the selection |
+| `Enter` / `e` | edit the selected line (recomputes below) |
+| `d` / `Del` | delete the selected line |
+| `y` | copy the value (plain, full precision) |
+| `Y` | copy the value (as shown, grouped) |
+| `Esc` | back to the input |
+
+### Variables (`F4`)
+| Key | Action |
+| --- | --- |
+| `↑` `↓` | select |
+| `Enter` | insert the name into the input |
+| `y` / `Y` | copy the value |
+| `d` | delete the variable |
+| `R` | reset all variables |
+| `Esc` | close |
+
+### Global
+| Key | Action |
+| --- | --- |
+| `F1` | toggle help |
+| `F2` | cycle notation (dec / sci / SI) |
+| `F3` | toggle angle mode (deg / rad) |
+| `F4` | variables overlay |
+| `F5` | toggle decimal separator (`.` / `,`) |
+| `Ctrl+Q` | quit (saving the session) |
+
+### Typed commands (in the input)
+`:d[n]`, `:s[n]`, `:si[n]` set notation (and optional decimals); `:deg` / `:rad`
+set the angle mode; `:clear` clears the history.
+
+## Expressions
+
+Backed by [`meval`](https://crates.io/crates/meval): `+ - * / ^` (and `**` for
+power), parentheses, constants `pi`, `e`, and functions such as `sqrt`, `exp`,
+`ln`, `abs`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`/`cosh`/`tanh`,
+`floor`, `ceil`, `round`, `min`, `max`, `atan2`. Trig respects the angle mode.
+
+- `ans` — the previous result. A line starting with an operator (e.g. `+5`)
+  continues from it automatically.
+- `=name` — save the previous answer to `name`.
+- `name = expr` — evaluate and store. `ans`, `pi` and `e` are reserved.
+- SI prefixes on numbers: `k M G T m µ u n p` (e.g. `4.7k` → `4700`).
+
+## Configuration
+
+`calcli` reads `config.toml` from `$XDG_CONFIG_HOME/calcli/` (or
+`~/.config/calcli/`). Every key is optional. See
+[`examples/config.toml`](examples/config.toml) for the full list with defaults
+(notation, decimals, angle mode, separators, max history, glyph set, the
+`restore_last_settings` switch and the accent colour).
+
+The session (settings, variables, history) is stored in `state.toml` under
+`$XDG_STATE_HOME/calcli/` (or `~/.local/state/calcli/`); see
+[`examples/state.toml`](examples/state.toml). History values are recomputed on
+load so the `ans` chain stays consistent with the active settings.
+
+> The `glyphs = "ascii"` option currently switches the warning marker to ASCII;
+> borders and a few separators use broadly-compatible Unicode box-drawing and
+> middle-dot glyphs.
+
+## Architecture
+
+Layered, with the composition root in `main.rs`:
+
+- `domain/` — pure core: evaluation (`Evaluator` trait + meval), expression
+  preprocessing, number formatting, variables, history (and its replay).
+- `service/` — `CalcService`: orchestration (submit / edit / delete + recompute,
+  variables, settings).
+- `storage/` — `StateRepository` port + TOML implementation (`state.toml`).
+- `config/` — `Config` and its loader.
+- `tui/` — the Ratatui front-end.
+- `util/` — paths, logging, clipboard, app metadata.
+
+The evaluation engine sits behind the `Evaluator` trait so a future unit-aware
+engine (planned, alongside a GUI) can replace it without touching the service.
+
+## Development
+
+```sh
+cargo test                  # unit + integration tests
+cargo clippy --all-targets  # must be warning-free
 ```
-calcli – calculator for the command line
-Enter a mathematical expression to evaluate it or help for more information.
 
->>>
-```
-
-### Basic Calculations
-
-```
->>> 5 + 3
-= 8
-
->>> 2 * pi
-= 6.283185307179586
-
->>> sqrt(16)
-= 4
-```
-
-### Using Previous Answer
-
-Reference the last result with `ans`:
-
-```
->>> 10 + 5
-= 15
-
->>> ans * 2
-= 30
-
->>> + 10
-= 40
-```
-
-### Variables
-
-Define and use variables in your calculations:
-
-```
->>> x = 5
-x = 5
-
->>> y = x * 2
-y = 10
-
->>> x + y
-= 15
-```
-
-### Decimal and Argument Separators
-
-Use comma as decimal separator (converted to dot internally):
-
-```
->>> 3,14 * 2
-= 6.28
-```
-
-Use semicolon to separate function arguments:
-
-```
->>> max(5; 10; 3)
-= 10
-```
-
-## Commands
-
-### Formatting Commands
-
-- **`:d`**: Set normal notation with 3 decimal places (default)
-- **`:d<n>`**: Set normal notation with custom decimal places (e.g., `:d0`, `:d5`, `:d10`)
-- **`:s`**: Set scientific notation with 3 decimal places (default)
-- **`:s<n>`**: Set scientific notation with custom decimal places (e.g., `:s2`, `:s8`)
-
-Examples:
-```
->>> 1/3
-= 0.333
-
->>> :d5
-Set to normal notation with 5 decimal places
-= 0.33333
-
->>> :s2
-Set to scientific notation with 2 decimal places
-= 3.33e-1
-```
-
-### Further commands
-
-- **`:q`** or **CTRL-D**: Exit the calculator
-- **CTRL-C**: (Planned) Copy last result to clipboard
-- **`:h`**: (Planned) Display help information
-
-## Roadmap
-
-- [x] Allow the use of "ans"
-- [x] Allow the definition of variables and their use in expressions
-- [x] Add keyboard bindings for number of decimals and scientific notation
-- [ ] Add the possibility to set the number of decimals with a command line argument
-- [ ] Include a help command that lists available commands and features
-- [ ] Implement clipboard support for copying results
-
-## Dependencies
-
-- [meval](https://crates.io/crates/meval) - Mathematical expression evaluation
-- [rustyline](https://crates.io/crates/rustyline) - Readline implementation for interactive input
-- [colored](https://crates.io/crates/colored) - Terminal color output
-
-## License
-
-MIT License. See `LICENSE` file for details.
+See `CLAUDE.md` for the coding standards this project follows.
