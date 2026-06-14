@@ -8,6 +8,8 @@ Type an expression, press Enter, keep going. The previous result is available as
 everything below it), and results keep full `f64` precision internally even when
 the display is rounded.
 
+![calcli — a fast terminal calculator TUI](https://raw.githubusercontent.com/cgroening/rs-calcli/main/images/screenshot.png)
+
 ## Features
 
 - **History with recompute** — each entry shows the input with its result on
