@@ -24,6 +24,9 @@ the display is rounded.
   expanded. Function arguments use `;` (e.g. `max(1;2)`).
 - **Clipboard** — `y` copies the plain, full-precision value (no grouping); `Y`
   copies it as shown (rounded, grouped).
+- **Growing input** — long expressions soft-wrap and the input field grows
+  (up to `input_max_lines`); `↑/↓` move the caret across the wrapped lines,
+  `↑` on the first line enters the history.
 - **Syntax highlighting** — functions, constants, operators (bold), numbers,
   defined variables, parentheses and `ans` are coloured in the input, the
   history and while editing. Colours are configurable in the `[theme]` table;

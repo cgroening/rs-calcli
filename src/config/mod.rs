@@ -123,6 +123,8 @@ pub struct Config {
     pub history_spacing: usize,
     /// Whether a separator line is drawn in the gap between history entries.
     pub history_separator: bool,
+    /// Maximum height (in text lines) the input field grows to as it wraps.
+    pub input_max_lines: usize,
     /// Theme colours.
     pub theme: Theme,
 }
@@ -142,6 +144,7 @@ impl Default for Config {
             history_zebra: false,
             history_spacing: 1,
             history_separator: true,
+            input_max_lines: 5,
             theme: Theme::default(),
         }
     }

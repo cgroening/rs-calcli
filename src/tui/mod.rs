@@ -76,6 +76,7 @@ pub struct App {
     history_zebra: bool,
     history_spacing: usize,
     history_separator: Option<Color>,
+    input_max_lines: usize,
     glyphs: GlyphSet,
     live_feedback: bool,
     input: String,
@@ -90,6 +91,7 @@ pub struct App {
     history_offset: Cell<usize>,
     view_height: Cell<usize>,
     var_offset: Cell<usize>,
+    input_width: Cell<usize>,
 }
 
 impl App {
@@ -106,6 +108,7 @@ impl App {
             history_separator: config
                 .history_separator
                 .then(|| parse_color(&config.theme.history_separator_color)),
+            input_max_lines: config.input_max_lines,
             glyphs: config.glyphs,
             live_feedback: config.live_feedback,
             input: String::new(),
@@ -120,6 +123,7 @@ impl App {
             history_offset: Cell::new(0),
             view_height: Cell::new(1),
             var_offset: Cell::new(0),
+            input_width: Cell::new(1),
         }
     }
 
@@ -347,12 +351,28 @@ impl App {
         };
     }
 
-    /// Handles keys while typing a new expression.
+    /// Handles keys while typing a new expression. The input soft-wraps and
+    /// grows, so `Up`/`Down` move the caret across wrapped lines; `Up` on the
+    /// first line (and `PageUp`) enter the history.
     fn handle_input_key(&mut self, key: KeyEvent) {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
             KeyCode::Enter => self.submit_input(),
-            KeyCode::Up | KeyCode::PageUp => self.enter_history(),
+            KeyCode::PageUp => self.enter_history(),
+            KeyCode::Up => {
+                let (line, _) = self.cursor_display();
+                if line == 0 {
+                    self.enter_history();
+                } else {
+                    self.apply_input_key(key);
+                }
+            }
+            KeyCode::Down => {
+                let (line, count) = self.cursor_display();
+                if line + 1 < count {
+                    self.apply_input_key(key);
+                }
+            }
             KeyCode::Char('y') if ctrl => {
                 match self.service.history().last_value() {
                     Some(value) => self.copy_plain(value),
@@ -363,21 +383,32 @@ impl App {
                 self.input.clear();
                 self.cursor = TextCursor::at(0);
             }
-            _ => {
-                if text_edit::handle_clipboard(
-                    &mut self.input,
-                    &mut self.cursor,
-                    key,
-                ) {
-                    return;
-                }
-                text_edit::apply_edit_key(
-                    &mut self.input,
-                    &mut self.cursor,
-                    key,
-                );
-            }
+            _ => self.apply_input_key(key),
         }
+    }
+
+    /// Applies a clipboard chord or an edit key to the soft-wrapped input.
+    fn apply_input_key(&mut self, key: KeyEvent) {
+        if text_edit::handle_clipboard(&mut self.input, &mut self.cursor, key) {
+            return;
+        }
+        let width = self.input_width.get().max(1);
+        text_edit::apply_edit_key(
+            &mut self.input,
+            &mut self.cursor,
+            key,
+            text_edit::EditMode::Multiline { width },
+        );
+    }
+
+    /// The caret's `(display line, total lines)` for the current input width.
+    fn cursor_display(&self) -> (usize, usize) {
+        let width = self.input_width.get().max(1);
+        let offsets = text_edit::wrap_offsets(&self.input, width);
+        let total = self.input.chars().count();
+        let (line, _) =
+            text_edit::cursor_to_display(&offsets, total, self.cursor.pos);
+        (line, offsets.len())
     }
 
     /// Evaluates the input buffer (or runs a `:` command) and clears it.
@@ -514,10 +545,12 @@ impl App {
                 ) {
                     return;
                 }
+                // In-place editing stays single-line (horizontal scroll).
                 text_edit::apply_edit_key(
                     &mut self.input,
                     &mut self.cursor,
                     key,
+                    text_edit::EditMode::SingleLine,
                 );
             }
         }
@@ -725,15 +758,16 @@ fn copy_status(text: &str) -> String {
 /// Draws the whole UI for one frame.
 fn render(app: &App, frame: &mut Frame) {
     let area = frame.area();
+    let input_height = input_box_height(app, area.width);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1), // header
-            Constraint::Min(1),    // history
-            Constraint::Length(3), // input
-            Constraint::Length(1), // settings bar
-            Constraint::Length(1), // status line
-            Constraint::Length(1), // footer hints
+            Constraint::Length(1),            // header
+            Constraint::Min(1),               // history
+            Constraint::Length(input_height), // input (grows with wrapping)
+            Constraint::Length(1),            // settings bar
+            Constraint::Length(1),            // status line
+            Constraint::Length(1),            // footer hints
         ])
         .split(area);
 
@@ -780,32 +814,85 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App) {
     let inner = area.inner(ratatui::layout::Margin::new(1, 1));
     frame.render_widget(block, area);
 
-    let line = match app.mode {
-        Mode::Input => {
-            let prompt = Span::styled(
-                "> ",
-                Style::default().fg(app.accent).add_modifier(Modifier::BOLD),
-            );
-            let width = inner.width.saturating_sub(2) as usize;
-            let kinds =
-                highlight::classify(&app.input, app.service.variables());
-            let styles = colors::styles_for(&kinds, &app.highlight);
-            let mut spans = vec![prompt];
-            spans.extend(text_edit::single_line_spans_styled(
-                &app.input, app.cursor, width, &styles,
-            ));
-            Line::from(spans)
-        }
-        Mode::History => Line::from(Span::styled(
+    let lines = match app.mode {
+        Mode::Input => input_editor_lines(app, inner),
+        Mode::History => vec![Line::from(Span::styled(
             "browsing history \u{2014} \u{2191}\u{2193} select, Enter edit, Esc back",
             colors::dim(),
-        )),
-        Mode::Edit(_) => Line::from(Span::styled(
+        ))],
+        Mode::Edit(_) => vec![Line::from(Span::styled(
             "editing line \u{2014} Enter apply, Esc cancel",
             colors::dim(),
-        )),
+        ))],
     };
-    frame.render_widget(Paragraph::new(line), inner);
+    frame.render_widget(Paragraph::new(lines), inner);
+}
+
+/// Columns available for wrapping the input text (inside borders and prompt).
+fn input_wrap_width(total_width: u16) -> usize {
+    (total_width as usize).saturating_sub(4).max(1)
+}
+
+/// The input box height (including borders): grows with the wrapped line count
+/// in Input mode, clamped to `input_max_lines`; one content line otherwise.
+fn input_box_height(app: &App, total_width: u16) -> u16 {
+    let content = if matches!(app.mode, Mode::Input) {
+        text_edit::wrap_offsets(&app.input, input_wrap_width(total_width)).len()
+    } else {
+        1
+    };
+    content.clamp(1, app.input_max_lines) as u16 + 2
+}
+
+/// Builds the soft-wrapped, syntax-highlighted editor lines for the input field,
+/// each prefixed with the prompt (`> `) or a continuation indent.
+fn input_editor_lines(app: &App, inner: Rect) -> Vec<Line<'static>> {
+    let width = inner.width.saturating_sub(2) as usize;
+    app.input_width.set(width);
+
+    let kinds = highlight::classify(&app.input, app.service.variables());
+    let styles = colors::styles_for(&kinds, &app.highlight);
+    let display = text_edit::multiline_spans_styled(
+        &app.input, app.cursor, width, &styles,
+    );
+
+    let height = (inner.height as usize).max(1);
+    let total = app.input.chars().count();
+    let offsets = text_edit::wrap_offsets(&app.input, width);
+    let (cursor_line, _) =
+        text_edit::cursor_to_display(&offsets, total, app.cursor.pos);
+    let start = window_start(display.len(), height, cursor_line);
+
+    let prompt_style =
+        Style::default().fg(app.accent).add_modifier(Modifier::BOLD);
+    display
+        .into_iter()
+        .enumerate()
+        .skip(start)
+        .take(height)
+        .map(|(index, line)| {
+            let prefix = if index == 0 {
+                Span::styled("> ", prompt_style)
+            } else {
+                Span::raw("  ")
+            };
+            let mut spans = line.spans;
+            spans.insert(0, prefix);
+            Line::from(spans)
+        })
+        .collect()
+}
+
+/// The first visible display line so the cursor line stays within `height`.
+fn window_start(total: usize, height: usize, cursor_line: usize) -> usize {
+    if total <= height {
+        return 0;
+    }
+    if cursor_line < height {
+        0
+    } else {
+        (cursor_line + 1 - height).min(total - height)
+    }
 }
 
 /// The dim live-feedback line for the input border: a result preview when the
@@ -1051,6 +1138,40 @@ mod tests {
         let screen = render_to_string(&app);
         assert!(screen.contains('\u{26a0}'));
         assert!(!screen.contains("= 5"));
+    }
+
+    #[test]
+    fn long_input_grows_the_box_and_up_navigates_wrapped_lines() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let mut app = test_app();
+        // A history entry so entering the history from the input is observable.
+        app.handle_key(key(KeyCode::Char('1')));
+        app.handle_key(key(KeyCode::Enter));
+        // A long expression that must wrap in a narrow terminal.
+        for _ in 0..18 {
+            app.handle_key(key(KeyCode::Char('1')));
+            app.handle_key(key(KeyCode::Char('+')));
+        }
+        app.handle_key(key(KeyCode::Char('1')));
+
+        // Render narrow so the input wraps and the wrap width is recorded.
+        let backend = TestBackend::new(24, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| render(&app, frame)).unwrap();
+
+        // The box grew beyond a single content line (3 = borders + 1).
+        assert!(input_box_height(&app, 24) > 3);
+
+        // Caret at the end sits on a lower wrapped line: Up stays in the input.
+        app.handle_key(key(KeyCode::Up));
+        assert_eq!(app.mode(), Mode::Input);
+
+        // Caret on the first line: Up enters the history.
+        app.cursor = TextCursor::at(0);
+        app.handle_key(key(KeyCode::Up));
+        assert!(matches!(app.mode(), Mode::History));
     }
 
     #[test]

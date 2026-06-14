@@ -43,6 +43,9 @@ history_spacing = 1
 # Draw a separator line in the gap between history entries (needs spacing >= 1).
 history_separator = true
 
+# Max height (in text lines) the input field grows to as a long expression wraps.
+input_max_lines = 5
+
 [theme]
 # Accent colour as #rrggbb or a name (cyan, green, magenta, yellow, blue).
 accent_color = "#6dd0ff"

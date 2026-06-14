@@ -26,7 +26,8 @@ const GROUPS: &[Group] = &[
         title: "Input",
         bindings: &[
             ("Enter", "evaluate the expression"),
-            ("\u{2191}", "enter the history"),
+            ("\u{2191} \u{2193}", "move the caret across wrapped lines"),
+            ("\u{2191} (top line)", "enter the history"),
             ("Ctrl+Y", "copy the last result (plain)"),
             ("Ctrl+C / X / V", "copy / cut / paste in the input"),
             ("Esc", "clear the input"),

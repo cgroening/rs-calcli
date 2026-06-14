@@ -30,6 +30,7 @@ struct RawConfig {
     history_zebra: Option<bool>,
     history_spacing: Option<usize>,
     history_separator: Option<bool>,
+    input_max_lines: Option<usize>,
     theme: Option<RawTheme>,
 }
 
@@ -98,6 +99,10 @@ fn merge(raw: RawConfig) -> Config {
         history_separator: raw
             .history_separator
             .unwrap_or(defaults.history_separator),
+        input_max_lines: raw
+            .input_max_lines
+            .unwrap_or(defaults.input_max_lines)
+            .max(1),
         theme: merge_theme(raw.theme),
     }
 }
@@ -203,6 +208,16 @@ mod tests {
         assert!(merge(RawConfig::default()).live_feedback);
         let raw: RawConfig = toml::from_str("live_feedback = false\n").unwrap();
         assert!(!merge(raw).live_feedback);
+    }
+
+    #[test]
+    fn input_max_lines_defaults_and_is_at_least_one() {
+        assert_eq!(merge(RawConfig::default()).input_max_lines, 5);
+        let raw = RawConfig {
+            input_max_lines: Some(0),
+            ..RawConfig::default()
+        };
+        assert_eq!(merge(raw).input_max_lines, 1);
     }
 
     #[test]

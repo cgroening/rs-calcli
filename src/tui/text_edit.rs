@@ -8,7 +8,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::{Modifier, Style};
-use ratatui::text::Span;
+use ratatui::text::{Line, Span};
 
 use crate::tui::colors;
 use crate::util::clipboard;
@@ -72,6 +72,16 @@ pub struct LineCaret {
     pub selection: Option<(usize, usize)>,
 }
 
+/// Whether an input is a single logical line or soft-wrapped at a display width.
+#[derive(Clone, Copy)]
+pub enum EditMode {
+    /// One logical line: `Home`/`End` jump to the value's start/end.
+    SingleLine,
+    /// Soft-wrapped at `width` columns: `Home`/`End` act on the display line and
+    /// `Up`/`Down` move across wrapped lines. The value never contains `\n`.
+    Multiline { width: usize },
+}
+
 /// Applies an editing key to `(text, cursor)`, returning `true` when the key was
 /// an editing key. Steering keys the caller owns (`Esc`, a confirming `Enter`,
 /// other chords) must be handled before delegating here.
@@ -79,10 +89,11 @@ pub fn apply_edit_key(
     text: &mut String,
     cursor: &mut TextCursor,
     key: KeyEvent,
+    mode: EditMode,
 ) -> bool {
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
-    if let Some(target) = motion_target(text, cursor.pos, key) {
+    if let Some(target) = motion_target(text, cursor.pos, key, mode) {
         if shift {
             cursor.extend_to(target);
         } else {
@@ -93,11 +104,11 @@ pub fn apply_edit_key(
     match key.code {
         KeyCode::Char('a') if ctrl => cursor.select_all(char_count(text)),
         KeyCode::Char('u') if ctrl => {
-            cursor.anchor = Some(0);
+            cursor.anchor = Some(line_start(text, cursor.pos, mode));
             replace_selection(text, cursor, "");
         }
         KeyCode::Char('k') if ctrl => {
-            cursor.anchor = Some(char_count(text));
+            cursor.anchor = Some(line_end(text, cursor.pos, mode));
             replace_selection(text, cursor, "");
         }
         KeyCode::Char(c) if !ctrl => {
@@ -149,16 +160,72 @@ pub fn handle_clipboard(
     true
 }
 
-/// The motion target for a navigation key, or `None` when it is not one.
-fn motion_target(text: &str, pos: usize, key: KeyEvent) -> Option<usize> {
+/// The motion target for a navigation key, or `None` when it is not one. A
+/// vertical move that cannot go further returns the unchanged `pos`.
+fn motion_target(
+    text: &str,
+    pos: usize,
+    key: KeyEvent,
+    mode: EditMode,
+) -> Option<usize> {
+    let multiline = matches!(mode, EditMode::Multiline { .. });
     let target = match key.code {
         KeyCode::Left => pos.saturating_sub(1),
         KeyCode::Right => (pos + 1).min(char_count(text)),
-        KeyCode::Home => 0,
-        KeyCode::End => char_count(text),
+        KeyCode::Home => line_start(text, pos, mode),
+        KeyCode::End => line_end(text, pos, mode),
+        KeyCode::Up if multiline => display_line_target(text, pos, mode, -1),
+        KeyCode::Down if multiline => display_line_target(text, pos, mode, 1),
         _ => return None,
     };
     Some(target)
+}
+
+/// The cursor index for `Home`: the value's start, or the display line's start.
+fn line_start(text: &str, cursor: usize, mode: EditMode) -> usize {
+    match mode {
+        EditMode::SingleLine => 0,
+        EditMode::Multiline { width } => {
+            let lines = wrap_offsets(text, width);
+            let (display_line, _) =
+                cursor_to_display(&lines, char_count(text), cursor);
+            display_to_cursor(&lines, display_line, 0)
+        }
+    }
+}
+
+/// The cursor index for `End`: the value's end, or the display line's end.
+fn line_end(text: &str, cursor: usize, mode: EditMode) -> usize {
+    match mode {
+        EditMode::SingleLine => char_count(text),
+        EditMode::Multiline { width } => {
+            let lines = wrap_offsets(text, width);
+            let (display_line, _) =
+                cursor_to_display(&lines, char_count(text), cursor);
+            let col = lines[display_line].0.chars().count();
+            display_to_cursor(&lines, display_line, col)
+        }
+    }
+}
+
+/// The cursor index one display line up/down, keeping the column where possible;
+/// returns `pos` unchanged when there is no line in that direction.
+fn display_line_target(
+    text: &str,
+    pos: usize,
+    mode: EditMode,
+    delta: i32,
+) -> usize {
+    let EditMode::Multiline { width } = mode else {
+        return pos;
+    };
+    let lines = wrap_offsets(text, width);
+    let (display_line, col) = cursor_to_display(&lines, char_count(text), pos);
+    let target = display_line as i32 + delta;
+    if target < 0 || target >= lines.len() as i32 {
+        return pos;
+    }
+    display_to_cursor(&lines, target as usize, col)
 }
 
 /// Replaces the active selection (or inserts at the caret) with `s`.
@@ -462,6 +529,116 @@ pub fn highlighted_spans(
     spans
 }
 
+/// Soft-wraps `value` to `width` columns and renders one [`Line`] per display
+/// line, applying the per-character `styles` (highlighting) and painting the
+/// block cursor / selection on the right line. Used by the growing input field.
+pub fn multiline_spans_styled(
+    value: &str,
+    cursor: TextCursor,
+    width: usize,
+    styles: &[Style],
+) -> Vec<Line<'static>> {
+    let lines = wrap_offsets(value, width);
+    let total = char_count(value);
+    let (cursor_line, _) = cursor_to_display(&lines, total, cursor.pos);
+    let selection = cursor.selection();
+
+    let mut out: Vec<Line<'static>> = Vec::with_capacity(lines.len());
+    for (index, (text, start)) in lines.iter().enumerate() {
+        let len = text.chars().count();
+        let line_styles = &styles
+            [(*start).min(styles.len())..(*start + len).min(styles.len())];
+        let column = (index == cursor_line)
+            .then(|| cursor.pos.saturating_sub(*start).min(len));
+        let line_selection = selection
+            .and_then(|(s, e)| intersect(s, e, *start, *start + len))
+            .map(|(s, e)| (s - *start, e - *start));
+        let caret = LineCaret {
+            cursor: column,
+            selection: line_selection,
+        };
+        out.push(Line::from(cursor_spans_styled(text, caret, line_styles)));
+    }
+    out
+}
+
+/// The display line and column of cursor index `cursor` within `lines`.
+pub fn cursor_to_display(
+    lines: &[(String, usize)],
+    total: usize,
+    cursor: usize,
+) -> (usize, usize) {
+    let cursor = cursor.min(total);
+    let mut display_line = 0;
+    for (index, (_, start)) in lines.iter().enumerate() {
+        if *start <= cursor {
+            display_line = index;
+        } else {
+            break;
+        }
+    }
+    let (text, start) = &lines[display_line];
+    (display_line, (cursor - start).min(text.chars().count()))
+}
+
+/// Maps a `(display line, column)` back to a cursor char index.
+fn display_to_cursor(
+    lines: &[(String, usize)],
+    line: usize,
+    col: usize,
+) -> usize {
+    let (text, start) = &lines[line];
+    start + col.min(text.chars().count())
+}
+
+/// Soft-wraps `text` to `width` columns, returning each display line with the
+/// character offset (into `text`) at which it starts. An over-long word is
+/// hard-split; the value carries no explicit newlines.
+pub fn wrap_offsets(text: &str, width: usize) -> Vec<(String, usize)> {
+    let width = width.max(1);
+    let chars: Vec<char> = text.chars().collect();
+    let mut out: Vec<(String, usize)> = Vec::new();
+    wrap_logical(&chars, 0, width, &mut out);
+    if out.is_empty() {
+        out.push((String::new(), 0));
+    }
+    out
+}
+
+/// Greedily wraps `line` (starting at char offset `base`) into `out`.
+fn wrap_logical(
+    line: &[char],
+    base: usize,
+    width: usize,
+    out: &mut Vec<(String, usize)>,
+) {
+    if line.is_empty() {
+        out.push((String::new(), base));
+        return;
+    }
+    let len = line.len();
+    let mut start = 0usize;
+    while start < len {
+        let end = (start + width).min(len);
+        if end == len {
+            out.push((line[start..end].iter().collect(), base + start));
+            break;
+        }
+        // Break at the last space in the window; else hard-split.
+        let break_at = (start + 1..=end).rev().find(|&p| line[p - 1] == ' ');
+        match break_at {
+            Some(p) if p - 1 > start => {
+                out.push((line[start..p - 1].iter().collect(), base + start));
+                start = p; // consume the break space
+            }
+            _ => {
+                out.push((line[start..end].iter().collect(), base + start));
+                start = end;
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -481,7 +658,20 @@ mod tests {
     ) -> (String, TextCursor) {
         let mut text = text.to_string();
         let mut cursor = cursor;
-        apply_edit_key(&mut text, &mut cursor, key);
+        apply_edit_key(&mut text, &mut cursor, key, EditMode::SingleLine);
+        (text, cursor)
+    }
+
+    fn apply_multiline(
+        text: &str,
+        cursor: TextCursor,
+        key: KeyEvent,
+        width: usize,
+    ) -> (String, TextCursor) {
+        let mut text = text.to_string();
+        let mut cursor = cursor;
+        let mode = EditMode::Multiline { width };
+        apply_edit_key(&mut text, &mut cursor, key, mode);
         (text, cursor)
     }
 
@@ -526,5 +716,62 @@ mod tests {
         };
         let (text, cursor) = apply("abcd", cursor, key(KeyCode::Char('X')));
         assert_eq!((text.as_str(), cursor.pos), ("aXd", 2));
+    }
+
+    #[test]
+    fn wrap_offsets_breaks_on_words_and_long_words() {
+        let lines = |t: &str, w| {
+            wrap_offsets(t, w)
+                .into_iter()
+                .map(|(s, _)| s)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(lines("alpha beta gamma", 11), vec!["alpha beta", "gamma"]);
+        assert_eq!(lines("abcdef", 3), vec!["abc", "def"]);
+        // A soft-wrapped value carries no newlines; offsets track char indices.
+        let offsets = wrap_offsets("alpha beta gamma", 11);
+        assert_eq!(offsets[1].1, 11);
+        let total = "alpha beta gamma".chars().count();
+        assert_eq!(cursor_to_display(&offsets, total, 13), (1, 2));
+    }
+
+    #[test]
+    fn multiline_up_down_move_across_wrapped_lines() {
+        let mode_width = 11;
+        // "alpha beta gamma" wraps to ["alpha beta", "gamma"]; pos 13 is on
+        // line 1, column 2. Up keeps the column on line 0.
+        let (_, cursor) = apply_multiline(
+            "alpha beta gamma",
+            TextCursor::at(13),
+            key(KeyCode::Up),
+            mode_width,
+        );
+        assert_eq!(cursor.pos, 2);
+        // Down from the top line returns to the lower line at the same column.
+        let (_, cursor) = apply_multiline(
+            "alpha beta gamma",
+            TextCursor::at(2),
+            key(KeyCode::Down),
+            mode_width,
+        );
+        assert_eq!(cursor.pos, 13);
+    }
+
+    #[test]
+    fn multiline_home_and_end_act_on_the_display_line() {
+        let (_, cursor) = apply_multiline(
+            "alpha beta gamma",
+            TextCursor::at(13),
+            key(KeyCode::Home),
+            11,
+        );
+        assert_eq!(cursor.pos, 11);
+        let (_, cursor) = apply_multiline(
+            "alpha beta gamma",
+            TextCursor::at(13),
+            key(KeyCode::End),
+            11,
+        );
+        assert_eq!(cursor.pos, 16);
     }
 }
