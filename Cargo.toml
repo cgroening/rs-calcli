@@ -2,8 +2,15 @@
 name = "calcli"
 version = "0.2.0"
 edition = "2024"
+rust-version = "1.85"
 description = "Fast terminal calculator (TUI) with history, variables and engineering helpers"
 license = "MIT"
+readme = "README.md"
+repository = "https://github.com/cgroening/rs-calcli"
+homepage = "https://github.com/cgroening/rs-calcli"
+keywords = ["calculator", "tui", "terminal", "units", "cli"]
+categories = ["command-line-utilities", "mathematics"]
+exclude = ["images/", "screenshots/", ".github/"]
 
 [[bin]]
 name = "calcli"
