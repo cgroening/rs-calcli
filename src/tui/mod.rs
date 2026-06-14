@@ -1085,13 +1085,13 @@ fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
             ("Esc", "back"),
         ],
         (_, Mode::Input) => &[
-            ("Enter", "calc"),
-            ("\u{2191}", "history"),
+            ("F1", "help"),
             ("F2", "notation"),
             ("F3", "deg/rad"),
             ("F4", "vars"),
             ("F5", ". ,"),
-            ("F1", "help"),
+            ("Enter", "calc"),
+            ("\u{2191}", "history"),
             ("^Q", "quit"),
         ],
     };
