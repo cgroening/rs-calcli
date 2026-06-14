@@ -1,9 +1,11 @@
-//! Renders the calculation history: input on the left, result on the right,
-//! with the selected row highlighted and in-place editing of the focused row.
+//! Renders the calculation history. Each entry spans two lines: the
+//! syntax-highlighted input, then the right-aligned result (or error) below it.
+//! Entries alternate a subtle background (zebra striping); the selected entry
+//! and the one being edited get their own tint over both lines.
 
 use ratatui::Frame;
 use ratatui::layout::{Margin, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
     Block, BorderType, Borders, Paragraph, Scrollbar, ScrollbarOrientation,
@@ -13,10 +15,11 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::domain::highlight;
 use crate::domain::history::HistoryEntry;
+use crate::tui::widgets::truncate;
 use crate::tui::{App, Mode, colors, text_edit};
 
-/// The gap between the input and the right-aligned result.
-const GAP: usize = 2;
+/// Screen lines used per history entry (input line + result line).
+const LINES_PER_ENTRY: usize = 2;
 
 /// Renders the history list into `area`.
 pub fn render(frame: &mut Frame, area: Rect, app: &App) {
@@ -33,7 +36,6 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     if height == 0 || width == 0 {
         return;
     }
-    app.set_view_height(height);
 
     let entries = app.service().history().entries();
     let total = entries.len();
@@ -46,30 +48,38 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         return;
     }
 
-    let offset = visible_offset(app, total, height);
-    let end = (offset + height).min(total);
-    let lines: Vec<Line> = (offset..end)
-        .map(|index| row_line(app, entries, index, width))
-        .collect();
+    let visible = (height / LINES_PER_ENTRY).max(1);
+    app.set_view_height(visible);
+    let offset = visible_offset(app, total, visible);
+    let end = (offset + visible).min(total);
+
+    let mut lines: Vec<Line> = Vec::with_capacity((end - offset) * 2);
+    for (index, entry) in
+        entries.iter().enumerate().skip(offset).take(end - offset)
+    {
+        let bg = row_bg(app, index);
+        lines.push(input_line(app, entry, index, width, bg));
+        lines.push(result_line(app, entry, width, bg));
+    }
     frame.render_widget(Paragraph::new(lines), inner);
 
-    render_scrollbar(frame, area, total, height, offset);
+    render_scrollbar(frame, area, total, visible, offset);
 }
 
-/// Computes the scroll offset, keeping the selection visible and otherwise
-/// pinning to the tail (most recent). Stores it back for paging.
-fn visible_offset(app: &App, total: usize, height: usize) -> usize {
-    if total <= height {
+/// Computes the scroll offset (in entries), keeping the selection visible and
+/// otherwise pinning to the tail (most recent). Stores it back for paging.
+fn visible_offset(app: &App, total: usize, visible: usize) -> usize {
+    if total <= visible {
         app.set_history_offset(0);
         return 0;
     }
-    let max_offset = total - height;
+    let max_offset = total - visible;
     let mut offset = app.history_offset().min(max_offset);
     match app.selected() {
         None => offset = max_offset,
         Some(selected) if selected < offset => offset = selected,
-        Some(selected) if selected >= offset + height => {
-            offset = selected + 1 - height;
+        Some(selected) if selected >= offset + visible => {
+            offset = selected + 1 - visible;
         }
         Some(_) => {}
     }
@@ -77,41 +87,64 @@ fn visible_offset(app: &App, total: usize, height: usize) -> usize {
     offset
 }
 
-/// Builds one history row: input (left) and result or error (right).
-fn row_line<'a>(
-    app: &App,
-    entries: &'a [HistoryEntry],
-    index: usize,
-    width: usize,
-) -> Line<'a> {
-    let entry = &entries[index];
-    let (result_text, result_style) = result_span(app, entry);
-    let result_width = result_text.width();
-    let input_width = width.saturating_sub(result_width + GAP);
-
-    let mut spans = input_spans(app, entry, index, input_width);
-    let used: usize = spans.iter().map(|span| span.content.width()).sum();
-    let padding = width.saturating_sub(used + result_width);
-    spans.push(Span::raw(" ".repeat(padding)));
-    spans.push(Span::styled(result_text, result_style));
-
-    let line = Line::from(spans);
+/// The background tint for entry `index`: focus while editing, selection when
+/// selected, else the zebra stripe on every second entry.
+fn row_bg(app: &App, index: usize) -> Option<Color> {
     if app.mode() == Mode::Edit(index) {
-        return line.style(Style::default().bg(colors::FOCUS_BG));
+        Some(colors::FOCUS_BG)
+    } else if app.selected() == Some(index) {
+        Some(colors::SELECTION_BG)
+    } else if index % 2 == 1 {
+        Some(app.history_alt_bg())
+    } else {
+        None
     }
-    if app.selected() == Some(index) {
-        return line.style(Style::default().bg(colors::SELECTION_BG));
-    }
-    line
 }
 
-/// The input spans for a row: syntax-highlighted, switching to the live editor
-/// on the edited row.
+/// The top line of an entry: the syntax-highlighted input, padded to `width`.
+fn input_line(
+    app: &App,
+    entry: &HistoryEntry,
+    index: usize,
+    width: usize,
+    bg: Option<Color>,
+) -> Line<'static> {
+    let mut spans = input_spans(app, entry, index, width);
+    let used: usize = spans.iter().map(|span| span.content.width()).sum();
+    spans.push(Span::raw(" ".repeat(width.saturating_sub(used))));
+    styled_row(Line::from(spans), bg)
+}
+
+/// The bottom line of an entry: the right-aligned result or error, over the
+/// full `width`.
+fn result_line(
+    app: &App,
+    entry: &HistoryEntry,
+    width: usize,
+    bg: Option<Color>,
+) -> Line<'static> {
+    let (text, style) = result_span(app, entry);
+    let text = truncate(&text, width);
+    let padding = width.saturating_sub(text.width());
+    let spans = vec![Span::raw(" ".repeat(padding)), Span::styled(text, style)];
+    styled_row(Line::from(spans), bg)
+}
+
+/// Applies the row background to a line, if any.
+fn styled_row(line: Line<'static>, bg: Option<Color>) -> Line<'static> {
+    match bg {
+        Some(color) => line.style(Style::default().bg(color)),
+        None => line,
+    }
+}
+
+/// The input spans for an entry: syntax-highlighted, switching to the live
+/// editor on the edited entry.
 fn input_spans(
     app: &App,
     entry: &HistoryEntry,
     index: usize,
-    input_width: usize,
+    width: usize,
 ) -> Vec<Span<'static>> {
     let variables = app.service().variables();
     if app.mode() == Mode::Edit(index) {
@@ -120,17 +153,16 @@ fn input_spans(
         return text_edit::single_line_spans_styled(
             app.input(),
             app.cursor(),
-            input_width,
+            width,
             &styles,
         );
     }
     let kinds = highlight::classify(&entry.input, variables);
     let styles = colors::styles_for(&kinds, app.highlight());
-    text_edit::highlighted_spans(&entry.input, &styles, input_width)
+    text_edit::highlighted_spans(&entry.input, &styles, width)
 }
 
-/// The right-hand result text and its style: the value (accent), the error
-/// (red), or empty.
+/// The result text and its style: the value (accent), the error (red), or empty.
 fn result_span(app: &App, entry: &HistoryEntry) -> (String, Style) {
     if let Some(error) = &entry.error {
         let text = format!("{} {}", app.warn(), error);
@@ -148,19 +180,19 @@ fn result_span(app: &App, entry: &HistoryEntry) -> (String, Style) {
     }
 }
 
-/// Draws a dim vertical scrollbar when the content overflows the viewport.
+/// Draws a dim vertical scrollbar when the entries overflow the viewport.
 fn render_scrollbar(
     frame: &mut Frame,
     area: Rect,
     total: usize,
-    height: usize,
+    visible: usize,
     offset: usize,
 ) {
-    if total <= height {
+    if total <= visible {
         return;
     }
     let mut state =
-        ScrollbarState::new(total.saturating_sub(height)).position(offset);
+        ScrollbarState::new(total.saturating_sub(visible)).position(offset);
     let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
         .begin_symbol(None)
         .end_symbol(None)

@@ -72,6 +72,7 @@ pub struct App {
     accent: Color,
     highlight: Highlight,
     settings_bar_bg: Color,
+    history_alt_bg: Color,
     glyphs: GlyphSet,
     live_feedback: bool,
     input: String,
@@ -96,6 +97,7 @@ impl App {
             accent: parse_color(&config.theme.accent_color),
             highlight: Highlight::from_theme(&config.theme),
             settings_bar_bg: parse_color(&config.theme.settings_bar_bg),
+            history_alt_bg: parse_color(&config.theme.history_alt_bg),
             glyphs: config.glyphs,
             live_feedback: config.live_feedback,
             input: String::new(),
@@ -154,6 +156,11 @@ impl App {
     /// The resolved syntax-highlight styles.
     pub fn highlight(&self) -> &Highlight {
         &self.highlight
+    }
+
+    /// The zebra-striping background for alternating history entries.
+    pub fn history_alt_bg(&self) -> Color {
+        self.history_alt_bg
     }
 
     /// The calculator service.

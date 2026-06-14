@@ -32,6 +32,9 @@ pub const DEFAULT_ANS_COLOR: &str = "#7dcfff";
 /// Default background for the settings bar (a muted dark tint).
 pub const DEFAULT_SETTINGS_BAR_BG: &str = "#252525";
 
+/// Default background tint for alternating history entries (zebra striping).
+pub const DEFAULT_HISTORY_ALT_BG: &str = "#1a1a1a";
+
 /// Which glyph set the TUI renders.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize,
@@ -65,6 +68,8 @@ pub struct Theme {
     pub ans_color: String,
     /// Background colour of the full-width settings bar.
     pub settings_bar_bg: String,
+    /// Background tint of every second history entry (zebra striping).
+    pub history_alt_bg: String,
 }
 
 impl Default for Theme {
@@ -78,6 +83,7 @@ impl Default for Theme {
             variable_color: DEFAULT_VARIABLE_COLOR.to_string(),
             ans_color: DEFAULT_ANS_COLOR.to_string(),
             settings_bar_bg: DEFAULT_SETTINGS_BAR_BG.to_string(),
+            history_alt_bg: DEFAULT_HISTORY_ALT_BG.to_string(),
         }
     }
 }

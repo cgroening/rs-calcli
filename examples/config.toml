@@ -50,3 +50,6 @@ ans_color = "#7dcfff"
 
 # Background of the full-width settings bar (below the input).
 settings_bar_bg = "#252525"
+
+# Background tint of every second history entry (zebra striping).
+history_alt_bg = "#1a1a1a"
