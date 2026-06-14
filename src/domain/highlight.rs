@@ -6,6 +6,7 @@
 //! concern); the view maps kinds to styles. Unknown identifiers stay
 //! [`TokenKind::Plain`] so typing never flashes a colour mid-word.
 
+use crate::domain::expression::is_si_prefix;
 use crate::domain::variables::VariableStore;
 
 /// The known built-in function names (mirrors the meval builtins calcli uses).
@@ -91,7 +92,9 @@ fn identifier_end(chars: &[char], start: usize) -> usize {
 }
 
 /// The exclusive end of the number starting at `start`, including a trailing
-/// `e`/`E` exponent when it is followed by (an optional sign and) a digit.
+/// `e`/`E` exponent (when followed by an optional sign and a digit) or a single
+/// SI-prefix letter at a word boundary (`3.3k`, `100u`), mirroring the SI
+/// expansion in [`crate::domain::expression`].
 fn number_end(chars: &[char], start: usize) -> usize {
     let mut end = start;
     while end < chars.len()
@@ -109,6 +112,13 @@ fn number_end(chars: &[char], start: usize) -> usize {
             while end < chars.len() && chars[end].is_ascii_digit() {
                 end += 1;
             }
+        }
+    } else if end < chars.len() && is_si_prefix(chars[end]) {
+        // Only when the prefix is not part of a longer identifier (e.g. `5km`).
+        let after_is_identifier =
+            end + 1 < chars.len() && is_identifier_part(chars[end + 1]);
+        if !after_is_identifier {
+            end += 1;
         }
     }
     end
@@ -219,6 +229,30 @@ mod tests {
         assert_eq!(
             runs("2.5e-3", &vars(&[])),
             vec![("2.5e-3".to_string(), TokenKind::Number)]
+        );
+    }
+
+    #[test]
+    fn si_prefix_suffix_joins_the_number_at_a_word_boundary() {
+        assert_eq!(
+            runs("3.3k", &vars(&[])),
+            vec![("3.3k".to_string(), TokenKind::Number)]
+        );
+        assert_eq!(
+            runs("100u+2", &vars(&[])),
+            vec![
+                ("100u".to_string(), TokenKind::Number),
+                ("+".to_string(), TokenKind::Operator),
+                ("2".to_string(), TokenKind::Number),
+            ]
+        );
+        // `5km` is not an SI prefix (the `k` continues into an identifier).
+        assert_eq!(
+            runs("5km", &vars(&[])),
+            vec![
+                ("5".to_string(), TokenKind::Number),
+                ("km".to_string(), TokenKind::Plain),
+            ]
         );
     }
 }

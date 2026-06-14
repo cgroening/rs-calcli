@@ -21,12 +21,12 @@ const DEFAULT_MAX_HISTORY: usize = 500;
 /// Default accent colour (hex), a muted cyan.
 pub const DEFAULT_ACCENT_COLOR: &str = "#82e38e";
 
-/// Default syntax-highlight colours (muted, dark-background friendly).
-pub const DEFAULT_FUNCTION_COLOR: &str = "#7aa2f7";
-pub const DEFAULT_CONSTANT_COLOR: &str = "#bb9af7";
-pub const DEFAULT_OPERATOR_COLOR: &str = "#ff9e64";
-pub const DEFAULT_NUMBER_COLOR: &str = "#9ece6a";
-pub const DEFAULT_VARIABLE_COLOR: &str = "#e0af68";
+/// Default syntax-highlight colours, matching the nox.nvim palette.
+pub const DEFAULT_FUNCTION_COLOR: &str = "#78c2b3";
+pub const DEFAULT_CONSTANT_COLOR: &str = "#7c94ff";
+pub const DEFAULT_OPERATOR_COLOR: &str = "#fe7057";
+pub const DEFAULT_NUMBER_COLOR: &str = "#e5cb49";
+pub const DEFAULT_VARIABLE_COLOR: &str = "#b27cde";
 pub const DEFAULT_ANS_COLOR: &str = "#7dcfff";
 
 /// Which glyph set the TUI renders.

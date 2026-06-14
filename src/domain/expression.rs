@@ -35,6 +35,12 @@ const INPUT_PREFIXES: &[(char, i32)] = &[
     ('T', 12),
 ];
 
+/// Whether `c` is an accepted SI-prefix letter (the single source of truth for
+/// both SI expansion and number highlighting).
+pub fn is_si_prefix(c: char) -> bool {
+    INPUT_PREFIXES.iter().any(|(prefix, _)| *prefix == c)
+}
+
 /// Matches a number directly followed by an SI prefix letter, both at word
 /// boundaries so it never fires inside an identifier (`a5k`, `pi`, `5km`).
 static SI_PATTERN: LazyLock<Regex> = LazyLock::new(|| {

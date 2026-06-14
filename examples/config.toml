@@ -41,9 +41,9 @@ accent_color = "#6dd0ff"
 # Syntax-highlight colours for the expression (input, history and editing).
 # Operators are always rendered bold, parentheses dim and `ans` underlined;
 # the rest use these (each defaults to the muted value shown).
-function_color = "#7aa2f7"
-constant_color = "#bb9af7"
-operator_color = "#ff9e64"
-number_color = "#9ece6a"
-variable_color = "#e0af68"
+function_color = "#78c2b3"
+constant_color = "#7c94ff"
+operator_color = "#fe7057"
+number_color = "#e5cb49"
+variable_color = "#b27cde"
 ans_color = "#7dcfff"
