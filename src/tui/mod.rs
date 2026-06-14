@@ -71,6 +71,7 @@ pub struct App {
     service: CalcService,
     accent: Color,
     highlight: Highlight,
+    settings_bar_bg: Color,
     glyphs: GlyphSet,
     live_feedback: bool,
     input: String,
@@ -94,6 +95,7 @@ impl App {
             service,
             accent: parse_color(&config.theme.accent_color),
             highlight: Highlight::from_theme(&config.theme),
+            settings_bar_bg: parse_color(&config.theme.settings_bar_bg),
             glyphs: config.glyphs,
             live_feedback: config.live_feedback,
             input: String::new(),
@@ -817,24 +819,27 @@ fn render_settings_bar(frame: &mut Frame, area: Rect, app: &App) {
         GlyphSet::Unicode => "unicode",
         GlyphSet::Ascii => "ascii",
     };
-    let pairs = [
-        ("angle", settings.angle_mode.label().to_string()),
-        ("notation", settings.notation.label().to_string()),
-        ("dp", settings.decimals.to_string()),
-        ("sep", settings.decimal_separator.to_string()),
-        ("group", grouping),
-        ("glyphs", glyphs.to_string()),
+    let values = [
+        settings.angle_mode.label().to_string(),
+        settings.notation.label().to_string(),
+        format!("{} dp", settings.decimals),
+        settings.decimal_separator.to_string(),
+        grouping,
+        glyphs.to_string(),
     ];
-    let value_style = Style::default().fg(app.accent);
-    let mut spans: Vec<Span> = Vec::new();
-    for (index, (label, value)) in pairs.iter().enumerate() {
+
+    let bg = app.settings_bar_bg;
+    let value_style = Style::default().fg(app.accent).bg(bg);
+    let separator_style = Style::default().add_modifier(Modifier::DIM).bg(bg);
+    let mut spans: Vec<Span> = vec![Span::styled(" ", Style::default().bg(bg))];
+    for (index, value) in values.iter().enumerate() {
         if index != 0 {
-            spans.push(Span::styled(" \u{00b7} ", colors::dim()));
+            spans.push(Span::styled(" | ", separator_style));
         }
-        spans.push(Span::styled(format!("{label}: "), colors::dim()));
         spans.push(Span::styled(value.clone(), value_style));
     }
-    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+    let bar = Paragraph::new(Line::from(spans)).style(Style::default().bg(bg));
+    frame.render_widget(bar, area);
 }
 
 /// Renders the transient status line.
@@ -926,6 +931,13 @@ mod tests {
         assert!(screen.contains("calcli"));
         assert!(screen.contains("input"));
         assert!(screen.contains("history"));
+    }
+
+    #[test]
+    fn settings_bar_shows_values_separated_by_pipes() {
+        let app = test_app();
+        let screen = render_to_string(&app);
+        assert!(screen.contains("RAD | DEC | 3 dp | . | space | unicode"));
     }
 
     #[test]

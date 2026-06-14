@@ -41,6 +41,7 @@ struct RawTheme {
     number_color: Option<String>,
     variable_color: Option<String>,
     ans_color: Option<String>,
+    settings_bar_bg: Option<String>,
 }
 
 /// Loads the configuration from the default config path.
@@ -103,6 +104,9 @@ fn merge_theme(raw: Option<RawTheme>) -> Theme {
         number_color: raw.number_color.unwrap_or(defaults.number_color),
         variable_color: raw.variable_color.unwrap_or(defaults.variable_color),
         ans_color: raw.ans_color.unwrap_or(defaults.ans_color),
+        settings_bar_bg: raw
+            .settings_bar_bg
+            .unwrap_or(defaults.settings_bar_bg),
     }
 }
 
