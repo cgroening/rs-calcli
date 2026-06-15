@@ -44,9 +44,21 @@ the display is rounded.
 
 ## Install
 
+From crates.io:
+
+```sh
+cargo install calcli
+```
+
+Or from a local checkout:
+
 ```sh
 cargo install --path .
-# or run from the repo
+```
+
+Or run without installing:
+
+```sh
 cargo run --release
 ```
 
@@ -61,6 +73,7 @@ calcli --demo
 ## Keys
 
 ### Input
+
 | Key | Action |
 | --- | --- |
 | `Enter` | evaluate the expression |
@@ -70,6 +83,7 @@ calcli --demo
 | `Esc` | clear the input |
 
 ### History (after `↑`)
+
 | Key | Action |
 | --- | --- |
 | `↑` `↓` / `PgUp` `PgDn` / `Home` `End` | move the selection |
@@ -86,6 +100,7 @@ Reordering, inserting and deleting all re-evaluate the affected lines, so `ans`
 and variable assignments stay consistent with the new order.
 
 ### Variables (`F4`)
+
 | Key | Action |
 | --- | --- |
 | `↑` `↓` | select |
@@ -96,6 +111,7 @@ and variable assignments stay consistent with the new order.
 | `Esc` | close |
 
 ### Global
+
 | Key | Action |
 | --- | --- |
 | `F1` | toggle help |
