@@ -190,6 +190,7 @@ fn parse(content: &str, path: &Path) -> Result<Config, ConfigError> {
 /// Merges a raw config over the defaults.
 fn merge(raw: RawConfig) -> Config {
     let defaults = Config::default();
+    report_unknown(&unknown_color_names(&raw));
     let legacy = raw.theme.unwrap_or_default();
     Config {
         notation: raw.notation.unwrap_or(defaults.notation),
@@ -237,13 +238,7 @@ fn merge(raw: RawConfig) -> Config {
         themes: raw
             .themes
             .into_iter()
-            .map(|(name, colors)| {
-                report_unknown(
-                    &format!("themes.{name}"),
-                    unknown_theme_colors(&colors),
-                );
-                (name, theme_colors(&colors))
-            })
+            .map(|(name, colors)| (name, theme_colors(&colors)))
             .collect(),
         keys: raw
             .keys
@@ -261,7 +256,6 @@ fn merge_appearance(
     legacy: &RawLegacyTheme,
     defaults: Appearance,
 ) -> Appearance {
-    report_unknown("appearance.colors", unknown_palette_colors(&raw.colors));
     let mut colors = defaults.colors;
     for (name, value) in legacy_chrome_colors(legacy) {
         colors.insert(name.to_string(), value);
@@ -330,19 +324,28 @@ fn theme_colors(raw: &ColorMap) -> ThemeColors {
     })
 }
 
-/// The colour names in `colors` that `[appearance.colors]` cannot use, i.e.
-/// that name no palette colour.
-fn unknown_palette_colors(colors: &ColorMap) -> Vec<&str> {
-    unknown_colors(colors, Palette::KEYS)
-}
-
-/// The colour names in `colors` that a `[themes.<name>]` table cannot carry.
+/// Every colour the file names in a section that cannot carry it, as
+/// `(section, name)` pairs.
 ///
-/// A theme contributes only the [`ThemeColors`] base colours. Validating it
-/// against `Palette::KEYS` instead would accept the derived ones (`selection`,
-/// `cursor`, `input_bg`, …) and then drop them without a word.
-fn unknown_theme_colors(colors: &ColorMap) -> Vec<&str> {
-    unknown_colors(colors, ThemeColors::KEYS)
+/// The two sections take different colour sets, and mixing them up is silent:
+/// `[appearance.colors]` overrides any palette colour, while a
+/// `[themes.<name>]` contributes only the [`ThemeColors`] a palette is derived
+/// *from*. Validating a theme against `Palette::KEYS` accepts the derived ones
+/// (`selection`, `cursor`, `input_bg`, …) and then drops the value without a
+/// word.
+fn unknown_color_names(raw: &RawConfig) -> Vec<(String, String)> {
+    let mut unknown = Vec::new();
+    if let Some(appearance) = &raw.appearance {
+        for name in unknown_colors(&appearance.colors, Palette::KEYS) {
+            unknown.push(("appearance.colors".to_string(), name.to_string()));
+        }
+    }
+    for (theme, colors) in &raw.themes {
+        for name in unknown_colors(colors, ThemeColors::KEYS) {
+            unknown.push((format!("themes.{theme}"), name.to_string()));
+        }
+    }
+    unknown
 }
 
 /// The keys of `colors` that are not in `known`, in file order.
@@ -356,8 +359,8 @@ fn unknown_colors<'a>(colors: &'a ColorMap, known: &[&str]) -> Vec<&'a str> {
 
 /// Warns about each unusable colour name, so a typo (or a colour in the wrong
 /// section) surfaces instead of being silently ignored.
-fn report_unknown(section: &str, unknown: Vec<&str>) {
-    for name in unknown {
+fn report_unknown(unknown: &[(String, String)]) {
+    for (section, name) in unknown {
         log::warn!("unknown colour '{name}' in [{section}], ignoring");
     }
 }
@@ -611,37 +614,75 @@ accent = \"#222222\"
 
     // --- Which colour belongs in which section ---
 
+    /// The `(section, name)` pairs `content` reports as unusable.
+    fn unknown(content: &str) -> Vec<(String, String)> {
+        let raw: RawConfig = toml::from_str(content).expect("valid toml");
+        unknown_color_names(&raw)
+    }
+
     #[test]
     fn a_theme_table_rejects_the_palettes_derived_colours() {
         // `cursor`, `selection` and the input fills are derived by the toolkit;
         // a theme cannot contribute them. Accepting them here would drop the
         // value without a word, which is what used to happen.
-        let colors = ColorMap::from([
-            ("cursor".to_string(), "#ff0000".to_string()),
-            ("selection".to_string(), "#00ff00".to_string()),
-            ("input_bg".to_string(), "#0000ff".to_string()),
-            ("border".to_string(), "#4a4a4a".to_string()),
-            ("border_focus".to_string(), "#8a8a8a".to_string()),
-        ]);
-        let unknown = unknown_theme_colors(&colors);
-        assert_eq!(unknown, vec!["cursor", "input_bg", "selection"]);
+        let reported = unknown(
+            "[themes.mine]\n\
+             border = \"#4a4a4a\"\n\
+             border_focus = \"#8a8a8a\"\n\
+             cursor = \"#ff0000\"\n\
+             input_bg = \"#0000ff\"\n\
+             selection = \"#00ff00\"\n",
+        );
+        assert_eq!(
+            reported,
+            vec![
+                ("themes.mine".to_string(), "cursor".to_string()),
+                ("themes.mine".to_string(), "input_bg".to_string()),
+                ("themes.mine".to_string(), "selection".to_string()),
+            ],
+        );
     }
 
     #[test]
-    fn an_appearance_table_accepts_every_palette_colour() {
-        let colors: ColorMap = Palette::KEYS
-            .iter()
-            .map(|name| ((*name).to_string(), "#010203".to_string()))
-            .collect();
-        assert!(unknown_palette_colors(&colors).is_empty());
+    fn appearance_colours_may_name_any_palette_colour() {
+        // The very colours a theme may not carry belong here.
+        let reported = unknown(
+            "[appearance.colors]\n\
+             cursor = \"#ff0000\"\n\
+             selection = \"#00ff00\"\n\
+             input_bg = \"#0000ff\"\n",
+        );
+        assert!(reported.is_empty(), "{reported:?}");
     }
 
     #[test]
-    fn both_sections_reject_a_typo() {
-        let colors =
-            ColorMap::from([("bordr".to_string(), "#010203".to_string())]);
-        assert_eq!(unknown_palette_colors(&colors), vec!["bordr"]);
-        assert_eq!(unknown_theme_colors(&colors), vec!["bordr"]);
+    fn a_theme_may_name_every_theme_colour() {
+        let table =
+            ThemeColors::KEYS
+                .iter()
+                .fold(String::new(), |mut table, name| {
+                    table.push_str(name);
+                    table.push_str(" = \"#010203\"\n");
+                    table
+                });
+        assert!(unknown(&format!("[themes.mine]\n{table}")).is_empty());
+    }
+
+    #[test]
+    fn both_sections_report_a_typo() {
+        assert_eq!(
+            unknown("[appearance.colors]\nbordr = \"#010203\"\n"),
+            vec![("appearance.colors".to_string(), "bordr".to_string())],
+        );
+        assert_eq!(
+            unknown("[themes.mine]\nbordr = \"#010203\"\n"),
+            vec![("themes.mine".to_string(), "bordr".to_string())],
+        );
+    }
+
+    #[test]
+    fn a_clean_file_reports_nothing() {
+        assert!(unknown("[appearance]\ntheme = \"calcli\"\n").is_empty());
     }
 
     #[test]
