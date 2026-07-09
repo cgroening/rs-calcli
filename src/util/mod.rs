@@ -1,6 +1,5 @@
-//! Shared, stateless helpers: paths, logging, clipboard and app metadata.
+//! Shared, stateless helpers: atomic writes, paths and logging.
 
-pub mod app_info;
-pub mod clipboard;
+pub mod fs;
 pub mod logging;
 pub mod paths;

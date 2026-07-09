@@ -6,7 +6,7 @@ use calcli::domain::format::{AngleMode, FormatSettings, Notation};
 use calcli::domain::history::History;
 use calcli::domain::quantity::Quantity;
 use calcli::domain::variables::VariableStore;
-use calcli::service::CalcService;
+use calcli::services::CalcService;
 
 fn service() -> CalcService {
     let settings = FormatSettings {

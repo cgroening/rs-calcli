@@ -5,6 +5,7 @@ use std::process::ExitCode;
 
 use anyhow::Context;
 use log::LevelFilter;
+use ratada::Tui;
 
 use calcli::config::{Config, load_config};
 use calcli::domain::evaluator::MevalEvaluator;
@@ -12,9 +13,8 @@ use calcli::domain::format::FormatSettings;
 use calcli::domain::history::{History, HistoryEntry};
 use calcli::domain::quantity::Quantity;
 use calcli::domain::variables::VariableStore;
-use calcli::service::CalcService;
+use calcli::services::CalcService;
 use calcli::storage::{PersistedState, StateRepository, TomlStateRepository};
-use calcli::tui::terminal::Tui;
 use calcli::tui::{self, App};
 use calcli::util::{logging, paths};
 
@@ -48,11 +48,12 @@ fn run() -> anyhow::Result<()> {
     };
 
     let service = build_service(&config, &state);
-    let mut app = App::new(service, &config);
+    let mut app = App::new(service, &config, &state.ui);
 
     let mut tui = Tui::new().context("initializing the terminal")?;
-    tui::run(&mut app, &mut tui)?;
+    let outcome = tui::run(&mut app, &mut tui);
     drop(tui);
+    outcome?;
 
     if !demo {
         repository

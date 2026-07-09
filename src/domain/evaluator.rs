@@ -9,7 +9,7 @@ use std::f64::consts::PI;
 // https://crates.io/crates/meval
 use meval::{Context, Expr};
 
-use crate::domain::error::{Error, Result};
+use crate::domain::errors::{AppError, Result};
 use crate::domain::format::AngleMode;
 
 /// Evaluates a fully substituted, meval-ready expression to a single value.
@@ -17,7 +17,9 @@ pub trait Evaluator {
     /// Evaluates `expr`, reading trigonometric arguments per `angle`.
     ///
     /// # Errors
-    /// Returns [`Error::Calculator`] when `expr` cannot be parsed or evaluated.
+    ///
+    /// Returns [`AppError::Calculator`] when `expr` cannot be parsed or
+    /// evaluated.
     fn eval(&self, expr: &str, angle: AngleMode) -> Result<f64>;
 }
 
@@ -36,12 +38,12 @@ impl Evaluator for MevalEvaluator {
     fn eval(&self, expr: &str, angle: AngleMode) -> Result<f64> {
         let parsed: Expr = expr
             .parse()
-            .map_err(|e| Error::Calculator(format!("{e}")))?;
+            .map_err(|e| AppError::Calculator(format!("{e}")))?;
         let result = match angle {
             AngleMode::Rad => parsed.eval(),
             AngleMode::Deg => parsed.eval_with_context(degree_context()),
         };
-        result.map_err(|e| Error::Calculator(format!("{e}")))
+        result.map_err(|e| AppError::Calculator(format!("{e}")))
     }
 }
 
@@ -98,6 +100,6 @@ mod tests {
     fn an_invalid_expression_is_a_calculator_error() {
         let evaluator = MevalEvaluator::new();
         let error = evaluator.eval("2+", AngleMode::Rad).unwrap_err();
-        assert!(matches!(error, Error::Calculator(_)));
+        assert!(matches!(error, AppError::Calculator(_)));
     }
 }

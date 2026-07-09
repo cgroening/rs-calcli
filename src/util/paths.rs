@@ -7,7 +7,7 @@
 use std::env;
 use std::path::PathBuf;
 
-use crate::util::app_info::APP_NAME;
+use crate::APP_NAME;
 
 /// Resolves the user's home directory.
 pub fn home_dir() -> Option<PathBuf> {

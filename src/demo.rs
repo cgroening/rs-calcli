@@ -32,6 +32,7 @@ const DEMO_INPUTS: &[&str] = &[
 pub fn demo_state() -> PersistedState {
     PersistedState {
         settings: None,
+        ui: Default::default(),
         variables: Default::default(),
         history: DEMO_INPUTS
             .iter()
@@ -50,7 +51,7 @@ mod tests {
     use crate::domain::evaluator::MevalEvaluator;
     use crate::domain::history::{History, HistoryEntry};
     use crate::domain::variables::VariableStore;
-    use crate::service::CalcService;
+    use crate::services::CalcService;
 
     /// Replays the demo history exactly as `main::build_service` does, so the
     /// test sees the same recomputed values the TUI would show.

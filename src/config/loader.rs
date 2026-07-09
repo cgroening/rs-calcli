@@ -1,22 +1,45 @@
-//! Loads [`Config`] from `config.toml`, merging over the defaults.
+//! Loads [`Config`] as defaults → TOML file → environment overrides.
 //!
-//! Every key is optional: an absent file or a partial file yields a valid
-//! config. A parse error is surfaced (the user wrote invalid TOML); a single
-//! out-of-range value (e.g. an unsupported decimal separator) is logged and the
-//! default kept, so one typo never blocks startup.
+//! Each stage overlays the previous one, so later sources win field by field:
+//! [`Config::default`] provides the baseline, an optional `config.toml` is
+//! merged over it (a missing file is not an error), and `CALCLI_*` variables
+//! overlay the result. Merging is per field, not per section: setting one
+//! colour leaves the others alone.
+//!
+//! Unknown TOML keys are rejected so a typo surfaces instead of being silently
+//! ignored; a single out-of-range value (e.g. an unsupported decimal separator)
+//! is logged and the default kept, so one typo never blocks startup.
+//!
+//! # Backwards compatibility
+//!
+//! calcli 0.2 wrote a flat `[theme]` table and top-level `glyphs`. Those keys
+//! are still accepted and mapped onto the new shape: the accent and the three
+//! chrome colours become `[appearance.colors]` overrides, and the eight token
+//! colours become `[highlight]`. The new sections win where both are present.
 
-use std::fs;
+use std::collections::BTreeMap;
+use std::io;
+use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::config::{Config, GlyphSet, Theme};
-use crate::domain::error::{Error, Result};
+use crate::config::appearance::Appearance;
+use crate::config::highlight::HighlightColors;
+use crate::config::{Config, ConfigError};
 use crate::domain::format::{AngleMode, Notation};
+use crate::theme::{
+    Color, GlyphVariant, Palette, ThemeColors, parse_color as parse_theme_color,
+};
 use crate::util::paths;
 
-/// The on-disk shape: every field optional so partial files merge cleanly.
+/// A colour-override table (`name -> value`), used for `[appearance.colors]`
+/// and each `[themes.<name>]`.
+type ColorMap = BTreeMap<String, String>;
+
+/// The on-disk shape: every field optional so partial files merge cleanly, and
+/// wide enough to cover both the 0.2 layout and the current one.
 #[derive(Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 struct RawConfig {
     notation: Option<Notation>,
     decimals: Option<usize>,
@@ -25,20 +48,58 @@ struct RawConfig {
     thousands_separator: Option<String>,
     trim_trailing_zeros: Option<bool>,
     max_history: Option<usize>,
-    glyphs: Option<GlyphSet>,
     restore_last_settings: Option<bool>,
     live_feedback: Option<bool>,
     history_zebra: Option<bool>,
     history_spacing: Option<usize>,
     history_separator: Option<bool>,
     input_max_lines: Option<usize>,
-    theme: Option<RawTheme>,
+    confirm_delete: Option<bool>,
+    confirm_quit: Option<bool>,
+
+    /// Legacy (0.2) top-level glyph set; superseded by `[appearance].glyphs`.
+    glyphs: Option<GlyphVariant>,
+    /// Legacy (0.2) flat `[theme]` colour table. Not to be confused with the
+    /// theme *name*, which is the scalar `theme` inside `[appearance]`.
+    theme: Option<RawLegacyTheme>,
+
+    appearance: Option<RawAppearance>,
+    /// Syntax-highlight token colours (`[highlight]`).
+    highlight: Option<RawHighlight>,
+    /// User-defined themes, each a `[themes.<name>]` colour table.
+    themes: BTreeMap<String, ColorMap>,
+    /// Per-action key overrides (`[keys]`), each a string or a list of strings.
+    keys: BTreeMap<String, KeyBinding>,
 }
 
-/// The `[theme]` table, all optional.
+/// The `[appearance]` table, all optional.
 #[derive(Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawTheme {
+#[serde(default, deny_unknown_fields)]
+struct RawAppearance {
+    theme: Option<String>,
+    glyphs: Option<GlyphVariant>,
+    /// Per-colour overrides (`[appearance.colors]`), keyed by palette colour.
+    colors: ColorMap,
+}
+
+/// The `[highlight]` table, all optional.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct RawHighlight {
+    function: Option<String>,
+    constant: Option<String>,
+    operator: Option<String>,
+    number: Option<String>,
+    variable: Option<String>,
+    ans: Option<String>,
+    comment: Option<String>,
+    unit: Option<String>,
+}
+
+/// The legacy `[theme]` table written by calcli 0.2, all optional.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct RawLegacyTheme {
     accent_color: Option<String>,
     function_color: Option<String>,
     constant_color: Option<String>,
@@ -53,31 +114,83 @@ struct RawTheme {
     history_separator_color: Option<String>,
 }
 
-/// Loads the configuration from the default config path.
+/// A key binding from config: either one key or a list of keys.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum KeyBinding {
+    One(String),
+    Many(Vec<String>),
+}
+
+impl KeyBinding {
+    fn into_keys(self) -> Vec<String> {
+        match self {
+            KeyBinding::One(key) => vec![key],
+            KeyBinding::Many(keys) => keys,
+        }
+    }
+}
+
+/// Loads the configuration from the default config path, then applies the
+/// environment overrides.
+///
+/// A missing file is not an error; the defaults are used in that case.
 ///
 /// # Errors
-/// Returns [`Error::Config`] when the file exists but is not valid TOML.
-pub fn load_config() -> Result<Config> {
-    let raw = read_raw_config()?;
-    let mut config = merge(raw);
+///
+/// Returns [`ConfigError`] when the file exists but cannot be read or parsed.
+pub fn load_config() -> Result<Config, ConfigError> {
+    load_from(&paths::config_file())
+}
+
+/// Loads the configuration from an explicit path, then applies env overrides.
+///
+/// # Errors
+///
+/// Returns [`ConfigError`] when the file exists but cannot be read or parsed.
+pub fn load_from(path: &Path) -> Result<Config, ConfigError> {
+    let mut config = match std::fs::read_to_string(path) {
+        Ok(content) => {
+            log::info!("loaded config from {}", path.display());
+            parse(&content, path)?
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            log::debug!("no config file at {}, using defaults", path.display());
+            Config::default()
+        }
+        Err(source) => {
+            return Err(ConfigError::Read {
+                path: path.display().to_string(),
+                source,
+            });
+        }
+    };
     apply_env(&mut config);
     Ok(config)
 }
 
-/// Reads and parses `config.toml`, or returns the empty raw config when absent.
-fn read_raw_config() -> Result<RawConfig> {
-    let path = paths::config_file();
-    if !path.exists() {
-        return Ok(RawConfig::default());
-    }
-    let text = fs::read_to_string(&path)
-        .map_err(|e| Error::config(&path, e.to_string()))?;
-    toml::from_str(&text).map_err(|e| Error::config(&path, e.to_string()))
+/// Parses and merges a TOML config string over the defaults (no env applied).
+///
+/// # Errors
+///
+/// Returns [`ConfigError::Parse`] when the string is not valid config TOML.
+pub fn config_from_str(content: &str) -> Result<Config, ConfigError> {
+    parse(content, Path::new("<memory>"))
+}
+
+fn parse(content: &str, path: &Path) -> Result<Config, ConfigError> {
+    let raw: RawConfig =
+        toml::from_str(content).map_err(|source| ConfigError::Parse {
+            path: path.display().to_string(),
+            source,
+        })?;
+    Ok(merge(raw))
 }
 
 /// Merges a raw config over the defaults.
 fn merge(raw: RawConfig) -> Config {
     let defaults = Config::default();
+    let legacy = raw.theme.unwrap_or_default();
     Config {
         notation: raw.notation.unwrap_or(defaults.notation),
         decimals: raw.decimals.unwrap_or(defaults.decimals),
@@ -93,7 +206,6 @@ fn merge(raw: RawConfig) -> Config {
             .trim_trailing_zeros
             .unwrap_or(defaults.trim_trailing_zeros),
         max_history: raw.max_history.unwrap_or(defaults.max_history).max(1),
-        glyphs: raw.glyphs.unwrap_or(defaults.glyphs),
         restore_last_settings: raw
             .restore_last_settings
             .unwrap_or(defaults.restore_last_settings),
@@ -109,33 +221,118 @@ fn merge(raw: RawConfig) -> Config {
             .input_max_lines
             .unwrap_or(defaults.input_max_lines)
             .max(1),
-        theme: merge_theme(raw.theme),
+        confirm_delete: raw.confirm_delete.unwrap_or(defaults.confirm_delete),
+        confirm_quit: raw.confirm_quit.unwrap_or(defaults.confirm_quit),
+        appearance: merge_appearance(
+            raw.appearance.unwrap_or_default(),
+            raw.glyphs,
+            &legacy,
+            defaults.appearance,
+        ),
+        highlight: merge_highlight(
+            raw.highlight.unwrap_or_default(),
+            &legacy,
+            defaults.highlight,
+        ),
+        themes: raw
+            .themes
+            .into_iter()
+            .map(|(name, colors)| {
+                warn_unknown_colors(&format!("themes.{name}"), &colors);
+                (name, theme_colors(&colors))
+            })
+            .collect(),
+        keys: raw
+            .keys
+            .into_iter()
+            .map(|(action, binding)| (action, binding.into_keys()))
+            .collect(),
     }
 }
 
-/// Merges the optional `[theme]` table over the default theme.
-fn merge_theme(raw: Option<RawTheme>) -> Theme {
-    let defaults = Theme::default();
-    let Some(raw) = raw else {
-        return defaults;
+/// Merges `[appearance]` over the defaults, folding in the legacy `[theme]`
+/// chrome colours and the legacy top-level `glyphs`. The new keys win.
+fn merge_appearance(
+    raw: RawAppearance,
+    legacy_glyphs: Option<GlyphVariant>,
+    legacy: &RawLegacyTheme,
+    defaults: Appearance,
+) -> Appearance {
+    warn_unknown_colors("appearance.colors", &raw.colors);
+    let mut colors = defaults.colors;
+    for (name, value) in legacy_chrome_colors(legacy) {
+        colors.insert(name.to_string(), value);
+    }
+    colors.extend(raw.colors);
+    Appearance {
+        theme: raw.theme.unwrap_or(defaults.theme),
+        colors,
+        glyphs: raw.glyphs.or(legacy_glyphs).unwrap_or(defaults.glyphs),
+    }
+}
+
+/// The legacy `[theme]` colours that map onto a palette colour.
+fn legacy_chrome_colors(
+    legacy: &RawLegacyTheme,
+) -> impl Iterator<Item = (&'static str, String)> + '_ {
+    [
+        ("accent", &legacy.accent_color),
+        ("footer", &legacy.settings_bar_bg),
+        ("panel", &legacy.history_alt_bg),
+        ("border", &legacy.history_separator_color),
+    ]
+    .into_iter()
+    .filter_map(|(name, value)| Some((name, value.clone()?)))
+}
+
+/// Merges `[highlight]` over the defaults, falling back to the legacy
+/// `[theme].*_color` keys where the new section is silent.
+fn merge_highlight(
+    raw: RawHighlight,
+    legacy: &RawLegacyTheme,
+    defaults: HighlightColors,
+) -> HighlightColors {
+    let pick = |new: Option<String>, old: &Option<String>, fallback: Color| {
+        new.or_else(|| old.clone())
+            .and_then(|value| parse_highlight_color(&value))
+            .unwrap_or(fallback)
     };
-    Theme {
-        accent_color: raw.accent_color.unwrap_or(defaults.accent_color),
-        function_color: raw.function_color.unwrap_or(defaults.function_color),
-        constant_color: raw.constant_color.unwrap_or(defaults.constant_color),
-        operator_color: raw.operator_color.unwrap_or(defaults.operator_color),
-        number_color: raw.number_color.unwrap_or(defaults.number_color),
-        variable_color: raw.variable_color.unwrap_or(defaults.variable_color),
-        ans_color: raw.ans_color.unwrap_or(defaults.ans_color),
-        comment_color: raw.comment_color.unwrap_or(defaults.comment_color),
-        unit_color: raw.unit_color.unwrap_or(defaults.unit_color),
-        settings_bar_bg: raw
-            .settings_bar_bg
-            .unwrap_or(defaults.settings_bar_bg),
-        history_alt_bg: raw.history_alt_bg.unwrap_or(defaults.history_alt_bg),
-        history_separator_color: raw
-            .history_separator_color
-            .unwrap_or(defaults.history_separator_color),
+    HighlightColors {
+        function: pick(raw.function, &legacy.function_color, defaults.function),
+        constant: pick(raw.constant, &legacy.constant_color, defaults.constant),
+        operator: pick(raw.operator, &legacy.operator_color, defaults.operator),
+        number: pick(raw.number, &legacy.number_color, defaults.number),
+        variable: pick(raw.variable, &legacy.variable_color, defaults.variable),
+        ans: pick(raw.ans, &legacy.ans_color, defaults.ans),
+        comment: pick(raw.comment, &legacy.comment_color, defaults.comment),
+        unit: pick(raw.unit, &legacy.unit_color, defaults.unit),
+    }
+}
+
+/// Parses a highlight colour, logging and ignoring an unusable value.
+fn parse_highlight_color(value: &str) -> Option<Color> {
+    let color = parse_theme_color(value);
+    if color.is_none() {
+        log::warn!("invalid highlight colour {value:?}, keeping the default");
+    }
+    color
+}
+
+/// Converts a raw custom theme colour table into [`ThemeColors`].
+fn theme_colors(raw: &ColorMap) -> ThemeColors {
+    ThemeColors::from_lookup(|name| {
+        raw.get(name)
+            .map(String::as_str)
+            .and_then(parse_theme_color)
+    })
+}
+
+/// Warns about colour keys not matching a palette colour name.
+fn warn_unknown_colors(section: &str, colors: &ColorMap) {
+    for name in colors.keys() {
+        if !Palette::KEYS.contains(&name.as_str()) {
+            log::warn!("unknown colour '{name}' in [{section}], ignoring");
+        }
     }
 }
 
@@ -155,7 +352,7 @@ fn parse_separator(value: &str) -> Option<char> {
 }
 
 /// Applies `CALCLI_*` environment overrides on top of the file/defaults.
-fn apply_env(config: &mut Config) {
+pub fn apply_env(config: &mut Config) {
     if let Ok(value) = std::env::var("CALCLI_DECIMAL_SEPARATOR")
         && let Some(separator) = parse_separator(&value)
     {
@@ -166,11 +363,44 @@ fn apply_env(config: &mut Config) {
     {
         config.decimals = decimals;
     }
+    if let Ok(value) = std::env::var("CALCLI_ACCENT")
+        && !value.is_empty()
+    {
+        config.appearance.colors.insert("accent".to_string(), value);
+    }
+    if let Ok(value) = std::env::var("CALCLI_THEME")
+        && !value.is_empty()
+    {
+        // The name is validated when resolved against the theme registry.
+        config.appearance.theme = value;
+    }
+    if let Ok(value) = std::env::var("CALCLI_GLYPHS") {
+        match value.to_ascii_lowercase().as_str() {
+            "ascii" => config.appearance.glyphs = GlyphVariant::Ascii,
+            "unicode" => config.appearance.glyphs = GlyphVariant::Unicode,
+            _ => {}
+        }
+    }
+    if let Ok(value) = std::env::var("CALCLI_CONFIRM_QUIT")
+        && let Ok(flag) = value.parse::<bool>()
+    {
+        config.confirm_quit = flag;
+    }
+    if let Ok(value) = std::env::var("CALCLI_CONFIRM_DELETE")
+        && let Ok(flag) = value.parse::<bool>()
+    {
+        config.confirm_delete = flag;
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::CALCLI_THEME;
+
+    /// The complete `config.toml` calcli 0.2 shipped as `examples/config.toml`.
+    const LEGACY_CONFIG: &str =
+        include_str!("../../tests/data/config-0.2.toml");
 
     #[test]
     fn empty_raw_config_yields_defaults() {
@@ -180,74 +410,30 @@ mod tests {
 
     #[test]
     fn partial_config_overrides_only_given_keys() {
-        let raw = RawConfig {
-            decimals: Some(6),
-            decimal_separator: Some(",".to_string()),
-            ..RawConfig::default()
-        };
+        let raw: RawConfig =
+            toml::from_str("decimals = 6\ndecimal_separator = \",\"\n")
+                .unwrap();
         let config = merge(raw);
         assert_eq!(config.decimals, 6);
         assert_eq!(config.decimal_separator, ',');
-        // Untouched keys keep their defaults.
         assert_eq!(config.notation, Config::default().notation);
         assert_eq!(config.thousands_separator, " ");
     }
 
     #[test]
     fn an_unsupported_separator_falls_back_to_the_default() {
-        let raw = RawConfig {
-            decimal_separator: Some(";".to_string()),
-            ..RawConfig::default()
-        };
+        let raw: RawConfig =
+            toml::from_str("decimal_separator = \";\"\n").unwrap();
         assert_eq!(merge(raw).decimal_separator, '.');
     }
 
     #[test]
-    fn max_history_is_at_least_one() {
-        let raw = RawConfig {
-            max_history: Some(0),
-            ..RawConfig::default()
-        };
-        assert_eq!(merge(raw).max_history, 1);
-    }
-
-    #[test]
-    fn live_feedback_defaults_on_and_can_be_disabled() {
-        assert!(merge(RawConfig::default()).live_feedback);
-        let raw: RawConfig = toml::from_str("live_feedback = false\n").unwrap();
-        assert!(!merge(raw).live_feedback);
-    }
-
-    #[test]
-    fn trim_trailing_zeros_defaults_on_and_can_be_disabled() {
-        assert!(merge(RawConfig::default()).trim_trailing_zeros);
+    fn max_history_and_input_max_lines_are_at_least_one() {
         let raw: RawConfig =
-            toml::from_str("trim_trailing_zeros = false\n").unwrap();
-        assert!(!merge(raw).trim_trailing_zeros);
-    }
-
-    #[test]
-    fn input_max_lines_defaults_and_is_at_least_one() {
-        assert_eq!(merge(RawConfig::default()).input_max_lines, 5);
-        let raw = RawConfig {
-            input_max_lines: Some(0),
-            ..RawConfig::default()
-        };
-        assert_eq!(merge(raw).input_max_lines, 1);
-    }
-
-    #[test]
-    fn theme_colours_default_and_override_individually() {
-        let defaults = merge(RawConfig::default()).theme;
-        assert_eq!(defaults, Theme::default());
-
-        let raw: RawConfig =
-            toml::from_str("[theme]\nfunction_color = \"#112233\"\n").unwrap();
-        let theme = merge(raw).theme;
-        assert_eq!(theme.function_color, "#112233");
-        // Other colours keep their defaults.
-        assert_eq!(theme.constant_color, Theme::default().constant_color);
-        assert_eq!(theme.accent_color, Theme::default().accent_color);
+            toml::from_str("max_history = 0\ninput_max_lines = 0\n").unwrap();
+        let config = merge(raw);
+        assert_eq!(config.max_history, 1);
+        assert_eq!(config.input_max_lines, 1);
     }
 
     #[test]
@@ -258,5 +444,105 @@ mod tests {
         let config = merge(raw);
         assert_eq!(config.notation, Notation::Scientific);
         assert_eq!(config.angle_mode, AngleMode::Deg);
+    }
+
+    #[test]
+    fn a_legacy_0_2_config_file_still_loads() {
+        let config = config_from_str(LEGACY_CONFIG)
+            .expect("the 0.2 config shape must keep loading");
+
+        // Plain scalars survive untouched.
+        assert_eq!(config.decimals, 3);
+        assert_eq!(config.max_history, 500);
+        assert_eq!(config.appearance.glyphs, GlyphVariant::Unicode);
+        assert!(config.live_feedback);
+
+        // The legacy accent becomes a palette override.
+        assert_eq!(config.palette().accent, Color::hex("#6dd0ff"));
+        // The legacy chrome colours land on their palette counterparts.
+        assert_eq!(config.palette().footer, Color::hex("#252525"));
+        assert_eq!(config.palette().panel, Color::hex("#1a1a1a"));
+        assert_eq!(config.palette().border, Color::hex("#3e3e3e"));
+        // The legacy token colours land in [highlight].
+        assert_eq!(config.highlight.function, Color::hex("#78c2b3"));
+        assert_eq!(config.highlight.unit, Color::hex("#ff79c6"));
+    }
+
+    #[test]
+    fn the_new_highlight_section_wins_over_the_legacy_theme_table() {
+        let raw = "\
+[theme]
+function_color = \"#111111\"
+[highlight]
+function = \"#222222\"
+";
+        let config = config_from_str(raw).unwrap();
+        assert_eq!(config.highlight.function, Color::hex("#222222"));
+    }
+
+    #[test]
+    fn the_new_appearance_glyphs_wins_over_the_legacy_top_level_key() {
+        let config = config_from_str("glyphs = \"ascii\"\n").unwrap();
+        assert_eq!(config.appearance.glyphs, GlyphVariant::Ascii);
+
+        let config = config_from_str(
+            "glyphs = \"ascii\"\n[appearance]\nglyphs = \"unicode\"\n",
+        )
+        .unwrap();
+        assert_eq!(config.appearance.glyphs, GlyphVariant::Unicode);
+    }
+
+    #[test]
+    fn an_appearance_colour_override_wins_over_the_legacy_accent() {
+        let raw = "\
+[theme]
+accent_color = \"#111111\"
+[appearance.colors]
+accent = \"#222222\"
+";
+        let config = config_from_str(raw).unwrap();
+        assert_eq!(config.palette().accent, Color::hex("#222222"));
+    }
+
+    #[test]
+    fn overriding_one_colour_keeps_the_default_red_cursor() {
+        let config =
+            config_from_str("[appearance.colors]\naccent = \"#222222\"\n")
+                .unwrap();
+        assert_eq!(config.palette().cursor, Color::hex("#d65c5c"));
+    }
+
+    #[test]
+    fn an_invalid_highlight_colour_keeps_the_default() {
+        let config =
+            config_from_str("[highlight]\nfunction = \"nope\"\n").unwrap();
+        assert_eq!(
+            config.highlight.function,
+            HighlightColors::default().function,
+        );
+    }
+
+    #[test]
+    fn key_bindings_accept_a_single_key_or_a_list() {
+        let config =
+            config_from_str("[keys]\nquit = \"x\"\ncopy = [\"y\", \"c\"]\n")
+                .unwrap();
+        assert_eq!(config.keys["quit"], vec!["x".to_string()]);
+        assert_eq!(config.keys["copy"], vec!["y".to_string(), "c".to_string()]);
+    }
+
+    #[test]
+    fn a_custom_theme_is_registered_alongside_the_calcli_theme() {
+        let config =
+            config_from_str("[themes.solar]\naccent = \"#010203\"\n").unwrap();
+        let registry = config.theme_registry();
+        assert!(registry.contains("solar"));
+        assert!(registry.contains(CALCLI_THEME));
+        assert_eq!(registry.resolve("solar").accent, Color::Rgb(1, 2, 3));
+    }
+
+    #[test]
+    fn an_unknown_top_level_key_is_rejected() {
+        assert!(config_from_str("nonsense = 1\n").is_err());
     }
 }

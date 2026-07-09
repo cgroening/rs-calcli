@@ -207,6 +207,12 @@ impl CalcService {
         self.settings.trim_trailing_zeros = !self.settings.trim_trailing_zeros;
     }
 
+    /// Sets the thousands group separator used for display. Input parsing is
+    /// tolerant of any grouping, so no recompute is needed.
+    pub fn set_thousands_separator(&mut self, separator: String) {
+        self.settings.thousands_separator = separator;
+    }
+
     /// Renders a quantity for display (rounded, grouped) - for the `Y` copy.
     pub fn format_display(&self, value: &Quantity) -> String {
         format_display(value, &self.settings)

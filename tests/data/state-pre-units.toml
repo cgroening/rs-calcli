@@ -5,34 +5,16 @@
 #
 # calcli normally writes this file itself on exit; this sample shows the format.
 # History values are recomputed on load, so the `ans` chain stays consistent.
-# A state.toml written by any older calcli still loads: the `[ui]` section may
-# be absent, and a dimensionless variable may be a bare number (`g = 9.81`)
-# rather than a table.
 
 [settings]
 notation = "decimal"
 decimals = 3
 angle_mode = "deg"
 decimal_separator = "."
-trim_trailing_zeros = true
 
-# The interface state: 0 = Calc, 1 = Variables, 2 = Settings.
-[ui]
-active_view = 0
-theme = "calcli"
-glyphs = "unicode"
-hints_visible = true
-
-[variables.g]
-value = 9.81
-
-[variables.r]
-value = 2.0
-
-# A variable carrying a unit.
-[variables.x]
-value = 50.0
-unit = "kN"
+[variables]
+g = 9.81
+r = 2.0
 
 [[history]]
 input = "2 * pi * r"
@@ -45,8 +27,3 @@ value = 157.91367041742973
 [[history]]
 input = "g * 3"
 value = 29.43
-
-[[history]]
-input = "x -> N"
-value = 50000.0
-unit = "N"

@@ -8,8 +8,8 @@ use calcli::domain::evaluator::MevalEvaluator;
 use calcli::domain::history::{History, HistoryEntry};
 use calcli::domain::quantity::Quantity;
 use calcli::domain::variables::VariableStore;
-use calcli::service::CalcService;
-use calcli::storage::{StateRepository, TomlStateRepository};
+use calcli::services::CalcService;
+use calcli::storage::{StateRepository, TomlStateRepository, UiState};
 use calcli::tui::App;
 
 fn temp_path() -> PathBuf {
@@ -40,7 +40,7 @@ fn a_session_survives_save_and_reload() {
     service.submit("answer + 1");
     service.toggle_angle_mode();
 
-    let app = App::new(service, &config);
+    let app = App::new(service, &config, &UiState::default());
     let snapshot = app.persisted_state();
 
     let path = temp_path();

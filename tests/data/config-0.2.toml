@@ -1,0 +1,76 @@
+# Example calcli configuration.
+#
+# Copy to your config directory to customize defaults:
+#   $XDG_CONFIG_HOME/calcli/config.toml   (or ~/.config/calcli/config.toml)
+#
+# Every key is optional; omitted keys keep the built-in default shown below.
+
+# Default notation: "decimal", "scientific" or "siprefixed".
+notation = "decimal"
+
+# Fractional digits in decimal and scientific notation.
+decimals = 3
+
+# Default angle mode for trig functions: "rad" or "deg".
+angle_mode = "rad"
+
+# Decimal mark used for display and accepted on input: "." or ",".
+# (The other of . / , is always accepted as a thousands separator on input.)
+decimal_separator = "."
+
+# Thousands group separator used for display (a space by default; "" disables).
+thousands_separator = " "
+
+# Drop trailing fractional zeros on display (12 instead of 12.000, 1.5 k instead
+# of 1.500 k). `decimals` still caps the precision. Toggle at runtime with F6.
+trim_trailing_zeros = true
+
+# Maximum number of history lines kept.
+max_history = 500
+
+# Glyph set: "unicode" or "ascii".
+glyphs = "unicode"
+
+# On startup, restore the last session's settings (true) or always start from
+# the defaults above (false). Variables and history are restored either way.
+restore_last_settings = true
+
+# Show a live result preview / validity warning on the input border as you type.
+live_feedback = true
+
+# Tint every second history entry (zebra striping); uses theme.history_alt_bg.
+history_zebra = false
+
+# Blank lines inserted after each history entry's result.
+history_spacing = 1
+
+# Draw a separator line in the gap between history entries (needs spacing >= 1).
+history_separator = true
+
+# Max height (in text lines) the input field grows to as a long expression wraps.
+input_max_lines = 5
+
+[theme]
+# Accent colour as #rrggbb or a name (cyan, green, magenta, yellow, blue).
+accent_color = "#6dd0ff"
+
+# Syntax-highlight colours for the expression (input, history and editing).
+# Operators are always rendered bold, parentheses dim and `ans` underlined;
+# the rest use these (each defaults to the muted value shown).
+function_color = "#78c2b3"
+constant_color = "#7c94ff"
+operator_color = "#fe7057"
+number_color = "#e5cb49"
+variable_color = "#b27cde"
+ans_color = "#7dcfff"
+comment_color = "#67c1e5"
+unit_color = "#ff79c6"
+
+# Background of the full-width settings bar (below the input).
+settings_bar_bg = "#252525"
+
+# Background tint of every second history entry (only when history_zebra = true).
+history_alt_bg = "#1a1a1a"
+
+# Colour of the separator line between history entries (when history_separator).
+history_separator_color = "#3e3e3e"

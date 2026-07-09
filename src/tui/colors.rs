@@ -1,57 +1,43 @@
-//! Central colour palette and styling helpers.
+//! Syntax-highlight styles and the caret colours the text editor paints with.
 //!
-//! One muted accent (resolved from config) carries meaning - borders, the
-//! active mode, labels - while fixed dim/tint colours mark selection, focus and
-//! the block cursor. Keeping them here (not scattered across views) is the
-//! single source of truth the style guide asks for.
+//! Everything the shared palette already names (accent, selection, borders,
+//! errors) is read from [`Palette`](crate::theme::Palette). Only the per-token
+//! expression colours live here, because no palette colour means "the colour of
+//! a function name".
 
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::Span;
 
-use crate::config::Theme;
+use crate::config::HighlightColors;
 use crate::domain::highlight::TokenKind;
+use crate::theme::Color as ThemeColor;
+use crate::theme::Palette;
 
-/// Background tint for a selected list row.
-pub const SELECTION_BG: Color = Color::Rgb(45, 55, 70);
+/// The colours the block caret and the selection are painted with, resolved
+/// once from the palette and handed to the text editor.
+#[derive(Debug, Clone, Copy)]
+pub struct CaretColors {
+    /// Background of the cell the caret covers.
+    pub cursor: Color,
+    /// Background of the selected cells.
+    pub selection: Color,
+}
 
-/// Background tint for the focused input field.
-pub const FOCUS_BG: Color = Color::Rgb(34, 42, 54);
-
-/// Block-cursor colour (a muted red), distinct from the accent and selection.
-pub const INPUT_CURSOR: Color = Color::Rgb(214, 92, 92);
-
-/// Colour for an error message.
-pub const ERROR: Color = Color::Rgb(224, 108, 108);
-
-/// The fallback accent when the configured colour cannot be parsed.
-const FALLBACK_ACCENT: Color = Color::Rgb(109, 208, 255);
-
-/// Resolves a config colour string (`#rrggbb` or a few names) to a [`Color`],
-/// falling back to the muted accent on anything unrecognized.
-pub fn parse_color(value: &str) -> Color {
-    if let Some(color) = parse_hex(value) {
-        return color;
-    }
-    match value.trim().to_lowercase().as_str() {
-        "cyan" => Color::Rgb(109, 208, 255),
-        "green" => Color::Rgb(140, 200, 140),
-        "magenta" => Color::Rgb(200, 140, 200),
-        "yellow" => Color::Rgb(214, 196, 120),
-        "blue" => Color::Rgb(120, 160, 220),
-        _ => FALLBACK_ACCENT,
+impl CaretColors {
+    /// Reads the caret colours from the active palette.
+    pub fn from_palette(palette: &Palette) -> Self {
+        CaretColors {
+            cursor: to_ratatui(palette.cursor),
+            selection: to_ratatui(palette.selection),
+        }
     }
 }
 
-/// Parses a `#rrggbb` hex string into a [`Color`], or `None` when malformed.
-fn parse_hex(value: &str) -> Option<Color> {
-    let hex = value.trim().strip_prefix('#')?;
-    if hex.len() != 6 {
-        return None;
+/// Converts a toolkit colour into a ratatui one.
+pub fn to_ratatui(color: ThemeColor) -> Color {
+    match color.rgb() {
+        Some((red, green, blue)) => Color::Rgb(red, green, blue),
+        None => Color::Reset,
     }
-    let red = u8::from_str_radix(&hex[0..2], 16).ok()?;
-    let green = u8::from_str_radix(&hex[2..4], 16).ok()?;
-    let blue = u8::from_str_radix(&hex[4..6], 16).ok()?;
-    Some(Color::Rgb(red, green, blue))
 }
 
 /// A dim style for secondary text.
@@ -75,27 +61,22 @@ pub struct Highlight {
 }
 
 impl Highlight {
-    /// Builds the highlight styles from the configured theme colours.
+    /// Builds the highlight styles from the configured token colours.
     ///
-    /// Operators are rendered bold, parentheses dim, and `ans` in the accent
-    /// colour; the rest use their configured colour.
-    pub fn from_theme(theme: &Theme) -> Self {
+    /// Operators are rendered bold, parentheses dim, `ans` underlined and
+    /// comments italic; the rest use their configured colour plainly.
+    pub fn new(colors: &HighlightColors) -> Self {
+        let fg = |color: ThemeColor| Style::default().fg(to_ratatui(color));
         Highlight {
-            function: Style::default().fg(parse_color(&theme.function_color)),
-            constant: Style::default().fg(parse_color(&theme.constant_color)),
-            operator: Style::default()
-                .fg(parse_color(&theme.operator_color))
-                .add_modifier(Modifier::BOLD),
-            number: Style::default().fg(parse_color(&theme.number_color)),
-            variable: Style::default().fg(parse_color(&theme.variable_color)),
-            unit: Style::default().fg(parse_color(&theme.unit_color)),
-            paren: Style::default().add_modifier(Modifier::DIM),
-            ans: Style::default()
-                .fg(parse_color(&theme.ans_color))
-                .add_modifier(Modifier::UNDERLINED),
-            comment: Style::default()
-                .fg(parse_color(&theme.comment_color))
-                .add_modifier(Modifier::ITALIC),
+            function: fg(colors.function),
+            constant: fg(colors.constant),
+            operator: fg(colors.operator).add_modifier(Modifier::BOLD),
+            number: fg(colors.number),
+            variable: fg(colors.variable),
+            unit: fg(colors.unit),
+            paren: dim(),
+            ans: fg(colors.ans).add_modifier(Modifier::UNDERLINED),
+            comment: fg(colors.comment).add_modifier(Modifier::ITALIC),
             plain: Style::default(),
         }
     }
@@ -122,46 +103,62 @@ pub fn styles_for(kinds: &[TokenKind], highlight: &Highlight) -> Vec<Style> {
     kinds.iter().map(|kind| highlight.style(*kind)).collect()
 }
 
-/// The block-cursor span (`█`) painted past the end of an input field.
-pub fn cursor_block_span() -> Span<'static> {
-    Span::styled("\u{2588}", Style::default().fg(INPUT_CURSOR))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Config;
 
     #[test]
-    fn parses_hex_colours() {
-        assert_eq!(parse_color("#6dd0ff"), Color::Rgb(109, 208, 255));
-        assert_eq!(parse_color("#000000"), Color::Rgb(0, 0, 0));
+    fn a_toolkit_colour_maps_onto_a_ratatui_rgb() {
+        let rgb = to_ratatui(ThemeColor::hex("#010203"));
+        assert_eq!(rgb, Color::Rgb(1, 2, 3));
+        assert_eq!(to_ratatui(ThemeColor::Default), Color::Reset);
     }
 
     #[test]
-    fn falls_back_on_malformed_input() {
-        assert_eq!(parse_color("not-a-color"), FALLBACK_ACCENT);
-        assert_eq!(parse_color("#12"), FALLBACK_ACCENT);
-    }
+    fn highlight_maps_the_token_colours_and_adds_the_modifiers() {
+        let colors = HighlightColors::default();
+        let highlight = Highlight::new(&colors);
 
-    #[test]
-    fn highlight_maps_theme_colours_and_makes_operators_bold() {
-        let theme = Theme::default();
-        let highlight = Highlight::from_theme(&theme);
         assert_eq!(
             highlight.style(TokenKind::Function).fg,
-            Some(parse_color(&theme.function_color))
+            Some(to_ratatui(colors.function)),
         );
+
         let ans = highlight.style(TokenKind::Ans);
-        assert_eq!(ans.fg, Some(parse_color(&theme.ans_color)));
+        assert_eq!(ans.fg, Some(to_ratatui(colors.ans)));
         assert!(ans.add_modifier.contains(Modifier::UNDERLINED));
+
         let operator = highlight.style(TokenKind::Operator);
-        assert_eq!(operator.fg, Some(parse_color(&theme.operator_color)));
+        assert_eq!(operator.fg, Some(to_ratatui(colors.operator)));
         assert!(operator.add_modifier.contains(Modifier::BOLD));
+
+        let comment = highlight.style(TokenKind::Comment);
+        assert!(comment.add_modifier.contains(Modifier::ITALIC));
+
         assert!(
             highlight
                 .style(TokenKind::Paren)
                 .add_modifier
                 .contains(Modifier::DIM)
         );
+    }
+
+    #[test]
+    fn the_caret_reads_its_colours_from_the_palette() {
+        let palette = Config::default().palette();
+        let caret = CaretColors::from_palette(&palette);
+        assert_eq!(caret.cursor, to_ratatui(palette.cursor));
+        assert_eq!(caret.selection, to_ratatui(palette.selection));
+        assert_ne!(caret.cursor, caret.selection);
+    }
+
+    #[test]
+    fn styles_for_maps_one_style_per_character() {
+        let highlight = Highlight::new(&HighlightColors::default());
+        let kinds = [TokenKind::Number, TokenKind::Operator, TokenKind::Number];
+        let styles = styles_for(&kinds, &highlight);
+        assert_eq!(styles.len(), 3);
+        assert!(styles[1].add_modifier.contains(Modifier::BOLD));
     }
 }

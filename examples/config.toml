@@ -4,6 +4,14 @@
 #   $XDG_CONFIG_HOME/calcli/config.toml   (or ~/.config/calcli/config.toml)
 #
 # Every key is optional; omitted keys keep the built-in default shown below.
+# Merging is per key, not per section: setting one colour leaves the rest alone.
+#
+# A config.toml written for calcli 0.2 (a flat `[theme]` table and a top-level
+# `glyphs`) still loads unchanged; its colours are mapped onto the sections
+# below. The 0.2 shape is deprecated but supported.
+
+
+## Calculation and display ####################################################
 
 # Default notation: "decimal", "scientific" or "siprefixed".
 notation = "decimal"
@@ -28,17 +36,28 @@ trim_trailing_zeros = true
 # Maximum number of history lines kept.
 max_history = 500
 
-# Glyph set: "unicode" or "ascii".
-glyphs = "unicode"
-
 # On startup, restore the last session's settings (true) or always start from
 # the defaults above (false). Variables and history are restored either way.
 restore_last_settings = true
 
+
+## Behaviour ##################################################################
+
 # Show a live result preview / validity warning on the input border as you type.
 live_feedback = true
 
-# Tint every second history entry (zebra striping); uses theme.history_alt_bg.
+# Ask before deleting a history line, clearing the history or resetting the
+# variables.
+confirm_delete = true
+
+# Ask before the soft quit (`q` outside the input, or the `:q` command).
+# The hard `Ctrl+Q` chord always exits at once and never asks.
+confirm_quit = false
+
+
+## The history list ###########################################################
+
+# Tint every second history entry (zebra striping); uses the `panel` colour.
 history_zebra = false
 
 # Blank lines inserted after each history entry's result.
@@ -50,27 +69,125 @@ history_separator = true
 # Max height (in text lines) the input field grows to as a long expression wraps.
 input_max_lines = 5
 
-[theme]
-# Accent colour as #rrggbb or a name (cyan, green, magenta, yellow, blue).
-accent_color = "#6dd0ff"
 
-# Syntax-highlight colours for the expression (input, history and editing).
-# Operators are always rendered bold, parentheses dim and `ans` underlined;
-# the rest use these (each defaults to the muted value shown).
-function_color = "#78c2b3"
-constant_color = "#7c94ff"
-operator_color = "#fe7057"
-number_color = "#e5cb49"
-variable_color = "#b27cde"
-ans_color = "#7dcfff"
-comment_color = "#67c1e5"
-unit_color = "#ff79c6"
+## Appearance #################################################################
 
-# Background of the full-width settings bar (below the input).
-settings_bar_bg = "#252525"
+[appearance]
+# The theme: "calcli" (the default), "default", "monochrome", or any theme you
+# define under [themes.<name>] below. Cycle it at runtime in the Settings view.
+theme = "calcli"
 
-# Background tint of every second history entry (only when history_zebra = true).
-history_alt_bg = "#1a1a1a"
+# Glyph set: "unicode" or "ascii".
+glyphs = "unicode"
 
-# Colour of the separator line between history entries (when history_separator).
-history_separator_color = "#3e3e3e"
+# Per-colour overrides on top of the selected theme. The names are the palette's
+# own; anything else is ignored with a warning. Values are "#rrggbb", "#rgb",
+# "rgb(r, g, b)" or a colour name.
+#
+#   accent  accent_dim  accent_vivid
+#   foreground  foreground_dim  foreground_muted
+#   background  header  footer  panel  surface
+#   selection  cursor  input_bg  input_bg_active  border
+#   success  warning  error  info
+[appearance.colors]
+# The block cursor in the input field, deliberately distinct from the accent.
+cursor = "#d65c5c"
+
+
+## Syntax highlighting ########################################################
+
+# Token colours for the expression (input, history and in-place editing).
+# Operators are always rendered bold, parentheses dim, `ans` underlined and
+# comments italic; these set the colour only.
+[highlight]
+function = "#78c2b3"
+constant = "#7c94ff"
+operator = "#fe7057"
+number = "#e5cb49"
+variable = "#b27cde"
+ans = "#7dcfff"
+comment = "#67c1e5"
+unit = "#ff79c6"
+
+
+## Custom themes ##############################################################
+
+# Define your own theme and select it with `[appearance].theme`. Only `accent`,
+# `foreground` and `background` are required; the neutrals are derived from the
+# background unless you set them.
+#
+# [themes.solarized]
+# accent = "#268bd2"
+# foreground = "#839496"
+# background = "#002b36"
+# header = "#00212b"
+# footer = "#00212b"
+# surface = "#073642"
+
+
+## Key bindings ###############################################################
+
+# Rebind any action. A value is one key or a list of keys. Modifiers are
+# `ctrl+`, `alt+` and `shift+`; shift is otherwise carried by a character's case
+# (`D` is Shift+D). Function keys are `f1`..`f12`.
+#
+# `ctrl+q` is not bindable: it is the toolkit's unconditional escape hatch, and
+# `f1` toggles the shortcut hints. Both are shown in the footer's Global group.
+#
+# A key already claimed by an earlier action in an overlapping context is
+# ignored with a warning, so a shadowed binding never fails silently.
+#
+# [keys]
+# # Views (the Calc view is a text field, so bare digits stay typeable)
+# view_calc = "alt+1"
+# view_variables = ["alt+2", "f4"]
+# view_settings = "alt+3"
+#
+# # Settings, reachable from every view
+# notation = "f2"
+# angle_mode = "f3"
+# decimal_separator = "f5"
+# trim_zeros = "f6"
+#
+# # Global
+# help = ["f12", "?"]
+# quit = "q"
+# copy_result = "ctrl+y"
+#
+# # The input field
+# submit = "enter"
+# enter_history = ["up", "pgup"]
+# clear_input = "esc"
+#
+# # Editing a history line in place
+# apply_edit = "enter"
+# cancel_edit = "esc"
+#
+# # Any list (history, variables, settings)
+# up = "up"
+# down = "down"
+# page_up = "pgup"
+# page_down = "pgdn"
+# top = "home"
+# bottom = "end"
+# copy = "y"
+# copy_displayed = "Y"
+# back = "esc"
+#
+# # The history list
+# edit = ["enter", "e"]
+# insert_below = "o"
+# insert_above = "O"
+# move_up = "alt+up"
+# move_down = "alt+down"
+# delete = ["d", "del"]
+# clear = "D"
+#
+# # The variables list
+# insert_variable = "enter"
+# delete_variable = ["d", "del"]
+# reset_variables = "R"
+#
+# # The settings list
+# prev_value = "left"
+# next_value = ["right", "enter"]

@@ -1,16 +1,27 @@
 //! User-facing configuration.
 //!
-//! [`Config`] holds the default display settings and the look of the TUI. It is
-//! loaded from `config.toml` by [`loader`]; missing keys fall back to the
-//! defaults here, so an empty or absent file yields a working configuration.
+//! [`Config`] holds the default display settings, the look of the TUI and the
+//! key bindings. It is loaded from `config.toml` by [`loader`]; missing keys
+//! fall back to the defaults here, so an empty or absent file yields a working
+//! configuration. [`Config::default`] is the single source of truth for those
+//! defaults.
 
+pub mod appearance;
+pub mod highlight;
 pub mod loader;
 
-pub use loader::load_config;
+use std::collections::BTreeMap;
 
-use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
+pub use crate::config::appearance::{Appearance, CALCLI_THEME};
+pub use crate::config::highlight::HighlightColors;
+pub use crate::config::loader::load_config;
 use crate::domain::format::{AngleMode, FormatSettings, Notation};
+use crate::keymap::Keymap;
+use crate::theme::{
+    Color, ColorOverrides, Palette, ThemeColors, ThemeRegistry,
+};
 
 /// Default number of fractional digits.
 const DEFAULT_DECIMALS: usize = 3;
@@ -18,90 +29,25 @@ const DEFAULT_DECIMALS: usize = 3;
 /// Default maximum number of history entries kept.
 const DEFAULT_MAX_HISTORY: usize = 500;
 
-/// Default accent colour (hex), a muted cyan.
-pub const DEFAULT_ACCENT_COLOR: &str = "#82e38e";
-
-/// Default syntax-highlight colours, matching the nox.nvim palette.
-pub const DEFAULT_FUNCTION_COLOR: &str = "#78c2b3";
-pub const DEFAULT_CONSTANT_COLOR: &str = "#7c94ff";
-pub const DEFAULT_OPERATOR_COLOR: &str = "#fe7057";
-pub const DEFAULT_NUMBER_COLOR: &str = "#e5cb49";
-pub const DEFAULT_VARIABLE_COLOR: &str = "#b27cde";
-pub const DEFAULT_ANS_COLOR: &str = "#7dcfff";
-pub const DEFAULT_COMMENT_COLOR: &str = "#67c1e5";
-pub const DEFAULT_UNIT_COLOR: &str = "#ff79c6";
-
-/// Default background for the settings bar (a muted dark tint).
-pub const DEFAULT_SETTINGS_BAR_BG: &str = "#252525";
-
-/// Default background tint for alternating history entries (zebra striping).
-pub const DEFAULT_HISTORY_ALT_BG: &str = "#1a1a1a";
-
-/// Default colour of the separator line between history entries (a muted gray).
-pub const DEFAULT_HISTORY_SEPARATOR_COLOR: &str = "#3e3e3e";
-
-/// Which glyph set the TUI renders.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize,
-)]
-#[serde(rename_all = "lowercase")]
-pub enum GlyphSet {
-    /// Unicode symbols (default).
-    #[default]
-    Unicode,
-    /// ASCII-only fallback.
-    Ascii,
-}
-
-/// Theme colours; every field defaults to the built-in look so a missing key
-/// changes nothing.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Theme {
-    /// Accent colour name or `#rrggbb` for borders, the active mode and labels.
-    pub accent_color: String,
-    /// Syntax-highlight colour for built-in functions (e.g. `sin`).
-    pub function_color: String,
-    /// Syntax-highlight colour for constants (`pi`, `e`).
-    pub constant_color: String,
-    /// Syntax-highlight colour for operators (rendered bold).
-    pub operator_color: String,
-    /// Syntax-highlight colour for numeric literals.
-    pub number_color: String,
-    /// Syntax-highlight colour for defined variables.
-    pub variable_color: String,
-    /// Syntax-highlight colour for the `ans` keyword (rendered underlined).
-    pub ans_color: String,
-    /// Syntax-highlight colour for inline comments (rendered italic).
-    pub comment_color: String,
-    /// Syntax-highlight colour for unit symbols.
-    pub unit_color: String,
-    /// Background colour of the full-width settings bar.
-    pub settings_bar_bg: String,
-    /// Background tint of every second history entry (zebra striping).
-    pub history_alt_bg: String,
-    /// Colour of the separator line drawn between history entries.
-    pub history_separator_color: String,
-}
-
-impl Default for Theme {
-    fn default() -> Self {
-        Theme {
-            accent_color: DEFAULT_ACCENT_COLOR.to_string(),
-            function_color: DEFAULT_FUNCTION_COLOR.to_string(),
-            constant_color: DEFAULT_CONSTANT_COLOR.to_string(),
-            operator_color: DEFAULT_OPERATOR_COLOR.to_string(),
-            number_color: DEFAULT_NUMBER_COLOR.to_string(),
-            variable_color: DEFAULT_VARIABLE_COLOR.to_string(),
-            ans_color: DEFAULT_ANS_COLOR.to_string(),
-            comment_color: DEFAULT_COMMENT_COLOR.to_string(),
-            unit_color: DEFAULT_UNIT_COLOR.to_string(),
-            settings_bar_bg: DEFAULT_SETTINGS_BAR_BG.to_string(),
-            history_alt_bg: DEFAULT_HISTORY_ALT_BG.to_string(),
-            history_separator_color: DEFAULT_HISTORY_SEPARATOR_COLOR
-                .to_string(),
-        }
-    }
-}
+/// calcli's own theme: the long-standing green accent over the panel bands the
+/// clibase layout expects. The header/footer bands sit a step darker than the
+/// content surface, so the content reads as a raised plane; `background` stays
+/// [`Color::Default`] so the outer fill and the shortcut hints show the
+/// terminal's own background.
+const CALCLI_COLORS: ThemeColors = ThemeColors {
+    accent: Color::hex("#82e38e"),
+    foreground: Color::hex("#e5e5e5"),
+    background: Color::Default,
+    header: Color::hex("#0e0c12"),
+    footer: Color::hex("#0e0c12"),
+    panel: Color::hex("#16141d"),
+    surface: Color::hex("#16141d"),
+    border: Color::hex("#3e3e3e"),
+    success: Color::hex("#a3c995"),
+    warning: Color::hex("#ded483"),
+    error: Color::hex("#e06c6c"),
+    info: Color::hex("#7fb3d4"),
+};
 
 /// The resolved configuration.
 #[derive(Debug, Clone, PartialEq)]
@@ -121,8 +67,6 @@ pub struct Config {
     pub trim_trailing_zeros: bool,
     /// Maximum number of history entries kept.
     pub max_history: usize,
-    /// Which glyph set to render.
-    pub glyphs: GlyphSet,
     /// Whether to restore the last session's settings on startup; when `false`,
     /// the defaults above are used every time.
     pub restore_last_settings: bool,
@@ -136,8 +80,20 @@ pub struct Config {
     pub history_separator: bool,
     /// Maximum height (in text lines) the input field grows to as it wraps.
     pub input_max_lines: usize,
-    /// Theme colours.
-    pub theme: Theme,
+    /// Appearance settings from `[appearance]`.
+    pub appearance: Appearance,
+    /// User-defined themes from `[themes.<name>]`, layered over the built-ins.
+    pub themes: Vec<(String, ThemeColors)>,
+    /// Syntax-highlight colours from `[highlight]`.
+    pub highlight: HighlightColors,
+    /// Per-action key overrides from `[keys]`, resolved by [`crate::keymap`].
+    pub keys: BTreeMap<String, Vec<String>>,
+    /// Whether destructive actions ask for confirmation first.
+    pub confirm_delete: bool,
+    /// Whether a soft quit (`q`, `:q`) asks first. The hard `Ctrl+Q` chord
+    /// always quits at once. Defaults to `false`, matching calcli's long-
+    /// standing behaviour of quitting without a prompt.
+    pub confirm_quit: bool,
 }
 
 impl Default for Config {
@@ -150,14 +106,18 @@ impl Default for Config {
             thousands_separator: " ".to_string(),
             trim_trailing_zeros: true,
             max_history: DEFAULT_MAX_HISTORY,
-            glyphs: GlyphSet::default(),
             restore_last_settings: true,
             live_feedback: true,
             history_zebra: false,
             history_spacing: 1,
             history_separator: true,
             input_max_lines: 5,
-            theme: Theme::default(),
+            appearance: Appearance::default(),
+            themes: Vec::new(),
+            highlight: HighlightColors::default(),
+            keys: BTreeMap::new(),
+            confirm_delete: true,
+            confirm_quit: false,
         }
     }
 }
@@ -173,5 +133,115 @@ impl Config {
             thousands_separator: self.thousands_separator.clone(),
             trim_trailing_zeros: self.trim_trailing_zeros,
         }
+    }
+
+    /// The resolved key map: compiled-in defaults with the `[keys]` overrides
+    /// applied. The single source for TUI dispatch and the shortcut hints.
+    pub fn keymap(&self) -> Keymap {
+        Keymap::from_overrides(&self.keys)
+    }
+
+    /// The configured colour overrides, layered over the selected theme. The
+    /// palette colour set is the single source (see
+    /// [`ColorOverrides::from_lookup`]), so a new colour needs no change here.
+    pub fn color_overrides(&self) -> ColorOverrides<'_> {
+        ColorOverrides::from_lookup(|name| {
+            self.appearance.colors.get(name).map_or("", String::as_str)
+        })
+    }
+
+    /// The theme registry: the built-ins, calcli's own theme, then any theme
+    /// configured under `[themes.<name>]` (which may replace either).
+    pub fn theme_registry(&self) -> ThemeRegistry {
+        ThemeRegistry::builtin()
+            .with_custom([(CALCLI_THEME.to_string(), CALCLI_COLORS)])
+            .with_custom(self.themes.iter().cloned())
+    }
+
+    /// Resolves the configured theme plus overrides into a [`Palette`].
+    pub fn palette(&self) -> Palette {
+        let base = self.theme_registry().resolve(&self.appearance.theme);
+        Palette::resolve(base, &self.color_overrides())
+    }
+}
+
+/// Errors raised while loading configuration.
+#[derive(Debug, Error)]
+pub enum ConfigError {
+    /// The config file exists but could not be read.
+    #[error("cannot read config file {path}")]
+    Read {
+        /// Path of the config file that could not be read.
+        path: String,
+        /// The underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// The config file was read but is not valid TOML for [`Config`].
+    #[error("invalid config file {path}")]
+    Parse {
+        /// Path of the config file that failed to parse.
+        path: String,
+        /// The underlying TOML parse error.
+        #[source]
+        source: toml::de::Error,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_calcli_theme_is_registered_and_selected_by_default() {
+        let config = Config::default();
+        assert_eq!(config.appearance.theme, CALCLI_THEME);
+        assert!(config.theme_registry().contains(CALCLI_THEME));
+    }
+
+    #[test]
+    fn the_palette_keeps_the_calcli_accent_and_panel_bands() {
+        let palette = Config::default().palette();
+        assert_eq!(palette.accent, Color::hex("#82e38e"));
+        assert_eq!(palette.header, Color::hex("#0e0c12"));
+        assert_eq!(palette.footer, Color::hex("#0e0c12"));
+        assert_eq!(palette.surface, Color::hex("#16141d"));
+    }
+
+    #[test]
+    fn the_content_surface_is_lighter_than_the_bands() {
+        let palette = Config::default().palette();
+        assert!(palette.surface.luminance() > palette.header.luminance());
+    }
+
+    #[test]
+    fn the_outer_background_is_the_terminal_default() {
+        assert_eq!(Config::default().palette().background, Color::Default);
+    }
+
+    #[test]
+    fn the_block_cursor_stays_red_rather_than_following_the_accent() {
+        let palette = Config::default().palette();
+        assert_eq!(palette.cursor, Color::hex("#d65c5c"));
+        assert_ne!(palette.cursor, palette.accent);
+    }
+
+    #[test]
+    fn a_user_theme_replaces_the_built_in_calcli_theme() {
+        let custom =
+            ThemeColors::from_accent(Color::Rgb(1, 2, 3), Color::Rgb(4, 5, 6));
+        let config = Config {
+            themes: vec![(CALCLI_THEME.to_string(), custom)],
+            ..Config::default()
+        };
+        assert_eq!(config.palette().accent, Color::Rgb(1, 2, 3));
+    }
+
+    #[test]
+    fn confirm_quit_defaults_off_and_confirm_delete_defaults_on() {
+        let config = Config::default();
+        assert!(!config.confirm_quit);
+        assert!(config.confirm_delete);
     }
 }

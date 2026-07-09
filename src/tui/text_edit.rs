@@ -7,11 +7,11 @@
 //! only) from the shared `text_edit` of the reference projects.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::style::{Modifier, Style};
+use ratada::clipboard;
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use crate::tui::colors;
-use crate::util::clipboard;
+use crate::tui::colors::CaretColors;
 
 /// A character caret over an input value plus an optional selection anchor.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
@@ -65,11 +65,24 @@ impl TextCursor {
 
 /// Where to paint the caret and selection within the rendered line.
 #[derive(Clone, Copy, Default)]
-pub struct LineCaret {
+struct LineCaret {
     /// The caret column, or `None` when the caret is off-screen.
-    pub cursor: Option<usize>,
+    cursor: Option<usize>,
     /// The selected column range as a half-open `(start, end)`.
-    pub selection: Option<(usize, usize)>,
+    selection: Option<(usize, usize)>,
+}
+
+/// How to render one soft-wrapped value: the display `width`, the per-character
+/// highlight `styles` and the `caret` colours to paint the cursor and selection
+/// with. Bundled so the span builders stay within three parameters.
+#[derive(Clone, Copy)]
+pub struct SpanContext<'a> {
+    /// The display width in columns.
+    pub width: usize,
+    /// One base style per character of the value.
+    pub styles: &'a [Style],
+    /// The caret and selection colours, resolved from the palette.
+    pub caret: CaretColors,
 }
 
 /// Whether an input is a single logical line or soft-wrapped at a display width.
@@ -243,7 +256,7 @@ pub fn replace_selection(text: &mut String, cursor: &mut TextCursor, s: &str) {
 }
 
 /// The selected substring, or `None` when nothing is selected.
-pub fn selected_text(text: &str, cursor: &TextCursor) -> Option<String> {
+fn selected_text(text: &str, cursor: &TextCursor) -> Option<String> {
     let (start, end) = cursor.selection()?;
     let chars: Vec<char> = text.chars().collect();
     let end = end.min(chars.len());
@@ -305,226 +318,95 @@ fn intersect(
     (start < end).then_some((start, end))
 }
 
-/// Builds the spans for a single-line value of at most `width` columns with the
-/// block cursor at `cursor.pos`, scrolling to keep the cursor visible and
-/// marking clipped ends with a dim `…`.
-pub fn single_line_spans(
-    value: &str,
-    cursor: TextCursor,
-    width: usize,
-    base: Style,
-) -> Vec<Span<'static>> {
-    let width = width.max(1);
-    let chars: Vec<char> = value.chars().collect();
-    let n = chars.len();
-    let pos = cursor.pos.min(n);
-    let end_cursor = pos >= n;
-    if n + usize::from(end_cursor) <= width {
-        let caret = LineCaret {
-            cursor: Some(pos),
-            selection: cursor.selection(),
-        };
-        return cursor_spans(value, caret, base);
-    }
-    let max_start = (n + usize::from(end_cursor)).saturating_sub(width - 1);
-    let room = width.saturating_sub(2).max(1);
-    let start = if pos < room {
-        0
-    } else {
-        (pos + 1 - room).min(max_start)
-    };
-    let lead = usize::from(start > 0);
-    let reach = (n - start) + usize::from(end_cursor) <= width - lead;
-    let show = if reach { n - start } else { width - (lead + 1) };
-    let visible_end = start + show;
-    let visible: String = chars[start..visible_end.min(n)].iter().collect();
-    let dim = Style::default().add_modifier(Modifier::DIM);
-    let mut spans = Vec::new();
-    if lead == 1 {
-        spans.push(Span::styled("\u{2026}".to_string(), dim));
-    }
-    let col = (pos >= start && pos <= visible_end).then(|| pos - start);
-    let selection = cursor
-        .selection()
-        .and_then(|(s, e)| intersect(s, e, start, visible_end))
-        .map(|(s, e)| (s - start, e - start));
-    let caret = LineCaret {
-        cursor: col,
-        selection,
-    };
-    spans.extend(cursor_spans(&visible, caret, base));
-    if !reach {
-        spans.push(Span::styled("\u{2026}".to_string(), dim));
-    }
-    spans
-}
-
 /// Splits `visible` into styled spans painting the selection and the block
-/// cursor (a `█` past the text, or the covered character on a tinted cell).
-pub fn cursor_spans(
-    visible: &str,
-    caret: LineCaret,
-    base: Style,
-) -> Vec<Span<'static>> {
-    let chars: Vec<char> = visible.chars().collect();
-    let mut spans: Vec<Span<'static>> = Vec::new();
-    let mut run = String::new();
-    let mut run_style = base;
-    for (i, c) in chars.iter().enumerate() {
-        let style = cell_style(i, caret, base);
-        if !run.is_empty() && style != run_style {
-            spans.push(Span::styled(std::mem::take(&mut run), run_style));
-        }
-        if run.is_empty() {
-            run_style = style;
-        }
-        run.push(*c);
-    }
-    if !run.is_empty() {
-        spans.push(Span::styled(run, run_style));
-    }
-    if caret.cursor == Some(chars.len()) {
-        spans.push(colors::cursor_block_span());
-    }
-    spans
-}
-
-/// The style of one rendered cell: the caret cell, a selected cell, or `base`.
-fn cell_style(i: usize, caret: LineCaret, base: Style) -> Style {
-    if caret.cursor == Some(i) {
-        return base.bg(colors::INPUT_CURSOR);
-    }
-    if let Some((start, end)) = caret.selection
-        && i >= start
-        && i < end
-    {
-        return base.bg(colors::SELECTION_BG);
-    }
-    base
-}
-
-/// Like [`single_line_spans`], but the base style of each character `g` is
-/// `styles[g]` (its highlight colour). `styles` is indexed by the value's
-/// character position; missing entries fall back to the default style.
-/// Adapted (single-line only) from numcli's `single_line_spans_styled`.
-pub fn single_line_spans_styled(
-    value: &str,
-    cursor: TextCursor,
-    width: usize,
-    styles: &[Style],
-) -> Vec<Span<'static>> {
-    let width = width.max(1);
-    let chars: Vec<char> = value.chars().collect();
-    let n = chars.len();
-    let pos = cursor.pos.min(n);
-    let end_cursor = pos >= n;
-    if n + usize::from(end_cursor) <= width {
-        let caret = LineCaret {
-            cursor: Some(pos),
-            selection: cursor.selection(),
-        };
-        return cursor_spans_styled(value, caret, styles);
-    }
-    let max_start = (n + usize::from(end_cursor)).saturating_sub(width - 1);
-    let room = width.saturating_sub(2).max(1);
-    let start = if pos < room {
-        0
-    } else {
-        (pos + 1 - room).min(max_start)
-    };
-    let lead = usize::from(start > 0);
-    let reach = (n - start) + usize::from(end_cursor) <= width - lead;
-    let show = if reach { n - start } else { width - (lead + 1) };
-    let visible_end = start + show;
-    let visible: String = chars[start..visible_end.min(n)].iter().collect();
-    let visible_styles =
-        &styles[start.min(styles.len())..visible_end.min(n).min(styles.len())];
-    let dim = Style::default().add_modifier(Modifier::DIM);
-    let mut spans = Vec::new();
-    if lead == 1 {
-        spans.push(Span::styled("\u{2026}".to_string(), dim));
-    }
-    let col = (pos >= start && pos <= visible_end).then(|| pos - start);
-    let selection = cursor
-        .selection()
-        .and_then(|(s, e)| intersect(s, e, start, visible_end))
-        .map(|(s, e)| (s - start, e - start));
-    let caret = LineCaret {
-        cursor: col,
-        selection,
-    };
-    spans.extend(cursor_spans_styled(&visible, caret, visible_styles));
-    if !reach {
-        spans.push(Span::styled("\u{2026}".to_string(), dim));
-    }
-    spans
-}
-
-/// Like [`cursor_spans`], but each visible character `i` uses `styles[i]` as its
-/// base style (missing entries fall back to the default).
-pub fn cursor_spans_styled(
+/// cursor, using `styles[i]` as character `i`'s base style (missing entries
+/// fall back to the default). A caret past the end of the text renders as a
+/// solid block.
+fn cursor_spans_styled(
     visible: &str,
     caret: LineCaret,
     styles: &[Style],
+    colors: CaretColors,
 ) -> Vec<Span<'static>> {
     let chars: Vec<char> = visible.chars().collect();
     let mut spans: Vec<Span<'static>> = Vec::new();
     let mut run = String::new();
     let mut run_style = Style::default();
-    for (i, c) in chars.iter().enumerate() {
-        let base = styles.get(i).copied().unwrap_or_default();
-        let style = cell_style(i, caret, base);
+    for (index, character) in chars.iter().enumerate() {
+        let base = styles.get(index).copied().unwrap_or_default();
+        let style = cell_style(index, caret, base, colors);
         if !run.is_empty() && style != run_style {
             spans.push(Span::styled(std::mem::take(&mut run), run_style));
         }
         if run.is_empty() {
             run_style = style;
         }
-        run.push(*c);
+        run.push(*character);
     }
     if !run.is_empty() {
         spans.push(Span::styled(run, run_style));
     }
     if caret.cursor == Some(chars.len()) {
-        spans.push(colors::cursor_block_span());
+        spans.push(cursor_block_span(colors));
     }
     spans
 }
 
-/// Soft-wraps `value` to `width` columns and renders one [`Line`] per display
-/// line (no cursor), applying the per-character `styles`. Used for the read-only
-/// history rows.
-pub fn wrapped_spans(
-    value: &str,
-    styles: &[Style],
-    width: usize,
-) -> Vec<Line<'static>> {
-    let lines = wrap_offsets(value, width);
-    lines
+/// The style of one rendered cell: the caret cell, a selected cell, or `base`.
+fn cell_style(
+    index: usize,
+    caret: LineCaret,
+    base: Style,
+    colors: CaretColors,
+) -> Style {
+    if caret.cursor == Some(index) {
+        return base.bg(colors.cursor);
+    }
+    if let Some((start, end)) = caret.selection
+        && index >= start
+        && index < end
+    {
+        return base.bg(colors.selection);
+    }
+    base
+}
+
+/// The block-cursor span (`\u{2588}`) painted past the end of a value.
+fn cursor_block_span(colors: CaretColors) -> Span<'static> {
+    Span::styled("\u{2588}", Style::default().fg(colors.cursor))
+}
+
+/// The slice of `styles` covering the characters `[start, start + len)`.
+fn line_styles(styles: &[Style], start: usize, len: usize) -> &[Style] {
+    let begin = start.min(styles.len());
+    let end = (start + len).min(styles.len());
+    &styles[begin..end]
+}
+
+/// Soft-wraps `value` and renders one [`Line`] per display line (no cursor),
+/// applying the per-character highlight styles. Used for the read-only history
+/// rows.
+pub fn wrapped_spans(value: &str, ctx: &SpanContext<'_>) -> Vec<Line<'static>> {
+    wrap_offsets(value, ctx.width)
         .iter()
         .map(|(text, start)| {
             let len = text.chars().count();
-            let line_styles = &styles
-                [(*start).min(styles.len())..(*start + len).min(styles.len())];
-            let caret = LineCaret {
-                cursor: None,
-                selection: None,
-            };
-            Line::from(cursor_spans_styled(text, caret, line_styles))
+            let styles = line_styles(ctx.styles, *start, len);
+            let caret = LineCaret::default();
+            Line::from(cursor_spans_styled(text, caret, styles, ctx.caret))
         })
         .collect()
 }
 
-/// Soft-wraps `value` to `width` columns and renders one [`Line`] per display
-/// line, applying the per-character `styles` (highlighting) and painting the
-/// block cursor / selection on the right line. Used by the growing input field.
+/// Soft-wraps `value` and renders one [`Line`] per display line, applying the
+/// per-character highlight styles and painting the block cursor and selection
+/// on the right line. Used by the growing input field and the in-place editor.
 pub fn multiline_spans_styled(
     value: &str,
     cursor: TextCursor,
-    width: usize,
-    styles: &[Style],
+    ctx: &SpanContext<'_>,
 ) -> Vec<Line<'static>> {
-    let lines = wrap_offsets(value, width);
+    let lines = wrap_offsets(value, ctx.width);
     let total = char_count(value);
     let (cursor_line, _) = cursor_to_display(&lines, total, cursor.pos);
     let selection = cursor.selection();
@@ -532,8 +414,7 @@ pub fn multiline_spans_styled(
     let mut out: Vec<Line<'static>> = Vec::with_capacity(lines.len());
     for (index, (text, start)) in lines.iter().enumerate() {
         let len = text.chars().count();
-        let line_styles = &styles
-            [(*start).min(styles.len())..(*start + len).min(styles.len())];
+        let styles = line_styles(ctx.styles, *start, len);
         let column = (index == cursor_line)
             .then(|| cursor.pos.saturating_sub(*start).min(len));
         let line_selection = selection
@@ -543,7 +424,9 @@ pub fn multiline_spans_styled(
             cursor: column,
             selection: line_selection,
         };
-        out.push(Line::from(cursor_spans_styled(text, caret, line_styles)));
+        out.push(Line::from(cursor_spans_styled(
+            text, caret, styles, ctx.caret,
+        )));
     }
     out
 }
