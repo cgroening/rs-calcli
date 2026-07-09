@@ -43,6 +43,10 @@ const CALCLI_COLORS: ThemeColors = ThemeColors {
     panel: Color::hex("#16141d"),
     surface: Color::hex("#16141d"),
     border: Color::hex("#3e3e3e"),
+    // The lifted border the focused input box draws, so its frame keeps its
+    // contrast against the brighter focused fill. `border.lighten(0.15)`, the
+    // toolkit's own derivation, spelled out because `lighten` is not `const`.
+    border_focus: Color::hex("#4a7c60"),
     success: Color::hex("#a3c995"),
     warning: Color::hex("#ded483"),
     error: Color::hex("#e06c6c"),
@@ -255,9 +259,13 @@ mod tests {
 
         // Visible against the content it tints ...
         assert!(palette.selection.luminance() > palette.surface.luminance());
-        // ... but never brighter than the frame lines around it, which is what
-        // `ratada`'s mix-a-third-of-the-accent derivation produces here.
-        assert!(palette.selection.luminance() < palette.border.luminance());
+        // ... never brighter than the brightest chrome stroke, which is what
+        // `ratada`'s mix-a-third-of-the-accent derivation produced here ...
+        assert!(
+            palette.selection.luminance() < palette.border_focus.luminance()
+        );
+        // ... and always far enough below the text drawn on it.
+        assert!(palette.selection.luminance() < palette.foreground.luminance());
 
         // It still carries the accent's hue, so the row reads as "here" rather
         // than as a plain grey block.

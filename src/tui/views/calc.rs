@@ -26,11 +26,6 @@ use crate::tui::text_edit::{self, SpanContext, TextCursor};
 /// Content lines per entry without wrapping (used only for the paging step).
 const MIN_ENTRY_LINES: usize = 2;
 
-/// How far the input's border is lifted while the field has the keyboard, in
-/// `OKLab` lightness. Enough to hold its contrast against the lighter focused
-/// fill without competing with the accent-coloured title.
-const FOCUSED_BORDER_LIFT: f32 = 0.15;
-
 /// Where keyboard focus sits in the calc view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -456,9 +451,9 @@ fn render_input(
     // A field, not a modal: a rounded border with the shared inset title
     // (`╭─ input ─`) over the input fill.
     //
-    // The border is read from a skin whose `border` follows the focus, because
-    // `chrome::border_title` styles the title's leading stroke from the palette
-    // itself: styling only `border_style` would leave that one stroke behind.
+    // The border is read from a skin whose `border` follows the focus (see
+    // `focus_skin`), because `chrome::border_title` styles the title's leading
+    // stroke from the palette itself.
     let framed = focus_skin(skin, view.mode);
     let title = chrome::border_title(
         &framed,
@@ -502,18 +497,23 @@ fn input_fill(skin: &Skin, mode: Mode) -> ratada::theme::Color {
     }
 }
 
-/// The skin the input's frame is drawn from: a copy whose `border` is lifted
-/// while the field has the keyboard.
+/// The skin the input's frame is drawn from: a copy whose `border` is the
+/// palette's `border_focus` while the field has the keyboard.
 ///
 /// The focused fill is lighter than the resting one, so a fixed border would
-/// lose most of its contrast against it and all but vanish. Lifting the border
-/// with the fill keeps the frame legible in both states.
+/// lose most of its contrast against it and all but vanish. `border_focus`
+/// keeps the frame legible in both states and is configurable, either under
+/// `[appearance.colors]` or in a `[themes.<name>]`.
+///
+/// It is swapped into `border` rather than only handed to `border_style`,
+/// because `chrome::border_title` reads the title's leading stroke from
+/// `palette.border`: that one stroke would otherwise stay dark.
 fn focus_skin(skin: &Skin, mode: Mode) -> Skin {
     if !matches!(mode, Mode::Input) {
         return *skin;
     }
     let mut focused = *skin;
-    focused.palette.border = skin.palette.border.lighten(FOCUSED_BORDER_LIFT);
+    focused.palette.border = skin.palette.border_focus;
     focused
 }
 
@@ -601,13 +601,27 @@ mod tests {
     }
 
     #[test]
-    fn the_border_lifts_only_while_the_field_has_the_keyboard() {
+    fn the_focused_frame_is_drawn_from_the_palette_focus_border() {
         let skin = skin();
         let resting = focus_skin(&skin, Mode::History).palette.border;
         let focused = focus_skin(&skin, Mode::Input).palette.border;
 
         assert_eq!(resting, skin.palette.border, "unfocused stays as themed");
+        assert_eq!(
+            focused, skin.palette.border_focus,
+            "the focused frame is configurable, not hard-derived",
+        );
         assert!(luminance(focused) > luminance(resting), "focused is lifted");
+    }
+
+    #[test]
+    fn a_configured_focus_border_reaches_the_frame() {
+        // What a user sets under `[appearance.colors] border_focus` must be
+        // exactly what the focused input box paints.
+        let mut skin = skin();
+        skin.palette.border_focus = ratada::theme::Color::Rgb(1, 2, 3);
+        let focused = focus_skin(&skin, Mode::Input).palette.border;
+        assert_eq!(focused, ratada::theme::Color::Rgb(1, 2, 3));
     }
 
     #[test]

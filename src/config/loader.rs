@@ -238,7 +238,10 @@ fn merge(raw: RawConfig) -> Config {
             .themes
             .into_iter()
             .map(|(name, colors)| {
-                warn_unknown_colors(&format!("themes.{name}"), &colors);
+                report_unknown(
+                    &format!("themes.{name}"),
+                    unknown_theme_colors(&colors),
+                );
                 (name, theme_colors(&colors))
             })
             .collect(),
@@ -258,7 +261,7 @@ fn merge_appearance(
     legacy: &RawLegacyTheme,
     defaults: Appearance,
 ) -> Appearance {
-    warn_unknown_colors("appearance.colors", &raw.colors);
+    report_unknown("appearance.colors", unknown_palette_colors(&raw.colors));
     let mut colors = defaults.colors;
     for (name, value) in legacy_chrome_colors(legacy) {
         colors.insert(name.to_string(), value);
@@ -327,12 +330,35 @@ fn theme_colors(raw: &ColorMap) -> ThemeColors {
     })
 }
 
-/// Warns about colour keys not matching a palette colour name.
-fn warn_unknown_colors(section: &str, colors: &ColorMap) {
-    for name in colors.keys() {
-        if !Palette::KEYS.contains(&name.as_str()) {
-            log::warn!("unknown colour '{name}' in [{section}], ignoring");
-        }
+/// The colour names in `colors` that `[appearance.colors]` cannot use, i.e.
+/// that name no palette colour.
+fn unknown_palette_colors(colors: &ColorMap) -> Vec<&str> {
+    unknown_colors(colors, Palette::KEYS)
+}
+
+/// The colour names in `colors` that a `[themes.<name>]` table cannot carry.
+///
+/// A theme contributes only the [`ThemeColors`] base colours. Validating it
+/// against `Palette::KEYS` instead would accept the derived ones (`selection`,
+/// `cursor`, `input_bg`, …) and then drop them without a word.
+fn unknown_theme_colors(colors: &ColorMap) -> Vec<&str> {
+    unknown_colors(colors, ThemeColors::KEYS)
+}
+
+/// The keys of `colors` that are not in `known`, in file order.
+fn unknown_colors<'a>(colors: &'a ColorMap, known: &[&str]) -> Vec<&'a str> {
+    colors
+        .keys()
+        .map(String::as_str)
+        .filter(|name| !known.contains(name))
+        .collect()
+}
+
+/// Warns about each unusable colour name, so a typo (or a colour in the wrong
+/// section) surfaces instead of being silently ignored.
+fn report_unknown(section: &str, unknown: Vec<&str>) {
+    for name in unknown {
+        log::warn!("unknown colour '{name}' in [{section}], ignoring");
     }
 }
 
@@ -539,6 +565,94 @@ accent = \"#222222\"
         assert!(registry.contains("solar"));
         assert!(registry.contains(CALCLI_THEME));
         assert_eq!(registry.resolve("solar").accent, Color::Rgb(1, 2, 3));
+    }
+
+    #[test]
+    fn a_theme_may_ship_its_own_focus_border() {
+        let config =
+            config_from_str("[themes.mine]\nborder_focus = \"#010203\"\n")
+                .unwrap();
+        let registry = config.theme_registry();
+        assert_eq!(registry.resolve("mine").border_focus, Color::Rgb(1, 2, 3));
+    }
+
+    #[test]
+    fn a_theme_that_sets_only_border_drags_its_focus_border_along() {
+        let config =
+            config_from_str("[themes.mine]\nborder = \"#4a4a4a\"\n").unwrap();
+        let theme = config.theme_registry().resolve("mine");
+        assert_eq!(theme.border, Color::hex("#4a4a4a"));
+        assert!(theme.border_focus.luminance() > theme.border.luminance());
+    }
+
+    #[test]
+    fn an_appearance_focus_border_override_reaches_the_palette() {
+        let config = config_from_str(
+            "[appearance.colors]\nborder_focus = \"#8a8a8a\"\n",
+        )
+        .unwrap();
+        assert_eq!(config.palette().border_focus, Color::hex("#8a8a8a"));
+        // The plain border keeps the theme's value.
+        assert_eq!(config.palette().border, Color::hex("#3e3e3e"));
+    }
+
+    #[test]
+    fn overriding_only_the_border_drags_the_focus_border_along() {
+        let config =
+            config_from_str("[appearance.colors]\nborder = \"#4a4a4a\"\n")
+                .unwrap();
+        let palette = config.palette();
+        assert_eq!(palette.border, Color::hex("#4a4a4a"));
+        assert!(
+            palette.border_focus.luminance() > palette.border.luminance(),
+            "the focused frame must not sink into the new border",
+        );
+    }
+
+    // --- Which colour belongs in which section ---
+
+    #[test]
+    fn a_theme_table_rejects_the_palettes_derived_colours() {
+        // `cursor`, `selection` and the input fills are derived by the toolkit;
+        // a theme cannot contribute them. Accepting them here would drop the
+        // value without a word, which is what used to happen.
+        let colors = ColorMap::from([
+            ("cursor".to_string(), "#ff0000".to_string()),
+            ("selection".to_string(), "#00ff00".to_string()),
+            ("input_bg".to_string(), "#0000ff".to_string()),
+            ("border".to_string(), "#4a4a4a".to_string()),
+            ("border_focus".to_string(), "#8a8a8a".to_string()),
+        ]);
+        let unknown = unknown_theme_colors(&colors);
+        assert_eq!(unknown, vec!["cursor", "input_bg", "selection"]);
+    }
+
+    #[test]
+    fn an_appearance_table_accepts_every_palette_colour() {
+        let colors: ColorMap = Palette::KEYS
+            .iter()
+            .map(|name| ((*name).to_string(), "#010203".to_string()))
+            .collect();
+        assert!(unknown_palette_colors(&colors).is_empty());
+    }
+
+    #[test]
+    fn both_sections_reject_a_typo() {
+        let colors =
+            ColorMap::from([("bordr".to_string(), "#010203".to_string())]);
+        assert_eq!(unknown_palette_colors(&colors), vec!["bordr"]);
+        assert_eq!(unknown_theme_colors(&colors), vec!["bordr"]);
+    }
+
+    #[test]
+    fn every_theme_colour_name_is_also_a_palette_colour_name() {
+        // A theme colour that the palette does not carry would be unreachable.
+        for name in ThemeColors::KEYS {
+            assert!(
+                Palette::KEYS.contains(name),
+                "{name} is in a theme but not in the palette",
+            );
+        }
     }
 
     #[test]

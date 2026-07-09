@@ -87,7 +87,7 @@ glyphs = "unicode"
 #   accent  accent_dim  accent_vivid
 #   foreground  foreground_dim  foreground_muted
 #   background  header  footer  panel  surface
-#   selection  cursor  input_bg  input_bg_active  border
+#   selection  cursor  input_bg  input_bg_active  border  border_focus
 #   success  warning  error  info
 [appearance.colors]
 # The block cursor in the input field, deliberately distinct from the accent.
@@ -100,10 +100,18 @@ cursor = "#d65c5c"
 input_bg = "#100e15"
 input_bg_active = "#262336"
 
+# The frame around the input box. `border_focus` is what it draws while the
+# field has the keyboard; left out it follows `border`, and overriding `border`
+# alone drags it along, so the focused frame never sinks into its own border.
+# The `calcli` theme sets both, so neither needs an override here.
+#
+# border = "#3e3e3e"
+# border_focus = "#676767"
+
 # The tint behind the selected history entry and the selected list row. Derived
 # by mixing a third of the accent into `surface`, which shouts on calcli's dark
 # surface; this keeps the accent hue at the weight of the focused input field.
-selection = "#283431"
+selection = "#354440"
 
 
 ## Syntax highlighting ########################################################
@@ -135,6 +143,13 @@ unit = "#ff79c6"
 # header = "#00212b"
 # footer = "#00212b"
 # surface = "#073642"
+# border = "#0a4a5a"
+# border_focus = "#1d7f96"   # omit it and it is derived from `border`
+#
+# A theme may set: accent, foreground, background, header, footer, panel,
+# surface, border, border_focus, success, warning, error, info. Anything else
+# (cursor, selection, the input fills, …) is derived by the toolkit and belongs
+# in [appearance.colors]; naming it here is reported and ignored.
 
 
 ## Key bindings ###############################################################

@@ -144,6 +144,23 @@ too, and the toolkit reports it as `ModalSignal::Quit`. Dropping that signal
 would trap the user in the dialog, so it is carried back to the app rather than
 folded into "the user said no".
 
+## Colours
+
+Two sections, two key sets, and they are not the same:
+
+- `[appearance.colors]` overrides any **palette** colour (`ThemeColors::KEYS`
+  plus the derived ones: `selection`, `cursor`, `input_bg`, …). Validated
+  against `Palette::KEYS`.
+- `[themes.<name>]` defines a **theme**, and a theme contributes only the base
+  colours a palette is derived *from*. Validated against `ThemeColors::KEYS`.
+  Naming a derived colour here is reported, not silently dropped.
+
+The input box's focused frame is `palette.border_focus`, a toolkit colour that
+follows `border` unless it is set. `tui/views/calc.rs::focus_skin` swaps it into
+`border` on a `Skin` copy rather than only styling `border_style`, because
+`chrome::border_title` reads the title's leading stroke from `palette.border` —
+that one stroke would otherwise stay dark.
+
 ## On-disk compatibility
 
 Every shape calcli has ever written must keep loading; `tests/legacy_data.rs`
