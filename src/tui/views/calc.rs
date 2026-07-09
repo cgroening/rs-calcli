@@ -26,6 +26,11 @@ use crate::tui::text_edit::{self, SpanContext, TextCursor};
 /// Content lines per entry without wrapping (used only for the paging step).
 const MIN_ENTRY_LINES: usize = 2;
 
+/// How far the input's border is lifted while the field has the keyboard, in
+/// `OKLab` lightness. Enough to hold its contrast against the lighter focused
+/// fill without competing with the accent-coloured title.
+const FOCUSED_BORDER_LIFT: f32 = 0.15;
+
 /// Where keyboard focus sits in the calc view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -449,16 +454,21 @@ fn render_input(
     view: &CalcView<'_>,
 ) -> usize {
     // A field, not a modal: a rounded border with the shared inset title
-    // (`╭─ input ─`) over the raised input fill.
+    // (`╭─ input ─`) over the input fill.
+    //
+    // The border is read from a skin whose `border` follows the focus, because
+    // `chrome::border_title` styles the title's leading stroke from the palette
+    // itself: styling only `border_style` would leave that one stroke behind.
+    let framed = focus_skin(skin, view.mode);
     let title = chrome::border_title(
-        skin,
+        &framed,
         "input",
-        style::accent(&skin.palette).add_modifier(Modifier::BOLD),
+        style::accent(&framed.palette).add_modifier(Modifier::BOLD),
     );
     let mut block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(style::border(&skin.palette))
+        .border_style(style::border(&framed.palette))
         .style(style::bg(input_fill(skin, view.mode)))
         .title(title);
     if let Some(feedback) = view.feedback.clone() {
@@ -490,6 +500,21 @@ fn input_fill(skin: &Skin, mode: Mode) -> ratada::theme::Color {
     } else {
         skin.palette.input_bg
     }
+}
+
+/// The skin the input's frame is drawn from: a copy whose `border` is lifted
+/// while the field has the keyboard.
+///
+/// The focused fill is lighter than the resting one, so a fixed border would
+/// lose most of its contrast against it and all but vanish. Lifting the border
+/// with the fill keeps the frame legible in both states.
+fn focus_skin(skin: &Skin, mode: Mode) -> Skin {
+    if !matches!(mode, Mode::Input) {
+        return *skin;
+    }
+    let mut focused = *skin;
+    focused.palette.border = skin.palette.border.lighten(FOCUSED_BORDER_LIFT);
+    focused
 }
 
 /// Builds the soft-wrapped, syntax-highlighted editor lines for the input
@@ -544,5 +569,83 @@ fn window_start_line(total: usize, height: usize, cursor_line: usize) -> usize {
         0
     } else {
         (cursor_line + 1 - height).min(total - height)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ratada::theme::{
+        ColorOverrides, GlyphVariant, Glyphs, Palette, ThemeRegistry,
+    };
+
+    use super::*;
+    use crate::config::Config;
+
+    fn skin() -> Skin {
+        Skin::new(
+            Config::default().palette(),
+            Glyphs::new(GlyphVariant::Unicode),
+        )
+    }
+
+    /// The perceived brightness of a colour, for contrast comparisons.
+    fn luminance(color: ratada::theme::Color) -> f32 {
+        color.luminance()
+    }
+
+    /// How far the border stands out from the fill it is drawn against.
+    fn contrast(mode: Mode) -> f32 {
+        let skin = skin();
+        let border = focus_skin(&skin, mode).palette.border;
+        (luminance(border) - luminance(input_fill(&skin, mode))).abs()
+    }
+
+    #[test]
+    fn the_border_lifts_only_while_the_field_has_the_keyboard() {
+        let skin = skin();
+        let resting = focus_skin(&skin, Mode::History).palette.border;
+        let focused = focus_skin(&skin, Mode::Input).palette.border;
+
+        assert_eq!(resting, skin.palette.border, "unfocused stays as themed");
+        assert!(luminance(focused) > luminance(resting), "focused is lifted");
+    }
+
+    #[test]
+    fn an_in_place_edit_leaves_the_border_at_rest() {
+        let skin = skin();
+        let editing = focus_skin(&skin, Mode::Edit(0)).palette.border;
+        assert_eq!(editing, skin.palette.border);
+    }
+
+    #[test]
+    fn the_border_keeps_its_contrast_against_the_brighter_focused_fill() {
+        // The focused fill is lighter, so a fixed border would fade into it.
+        // Whatever the two fills are tuned to, the frame must stay at least as
+        // visible when focused as it is at rest.
+        assert!(
+            contrast(Mode::Input) >= contrast(Mode::History),
+            "focused contrast {} fell below resting {}",
+            contrast(Mode::Input),
+            contrast(Mode::History),
+        );
+    }
+
+    #[test]
+    fn the_lifted_border_never_outshines_the_foreground() {
+        let skin = skin();
+        let focused = focus_skin(&skin, Mode::Input).palette.border;
+        assert!(
+            luminance(focused) < luminance(skin.palette.foreground),
+            "the frame must not read as text",
+        );
+    }
+
+    #[test]
+    fn a_custom_theme_border_is_lifted_from_its_own_value() {
+        let base = ThemeRegistry::builtin().resolve("monochrome");
+        let palette = Palette::resolve(base, &ColorOverrides::default());
+        let skin = Skin::new(palette, Glyphs::new(GlyphVariant::Unicode));
+        let focused = focus_skin(&skin, Mode::Input).palette.border;
+        assert!(luminance(focused) > luminance(skin.palette.border));
     }
 }

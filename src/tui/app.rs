@@ -6,12 +6,14 @@
 //! view behind them instead of a black screen.
 
 use std::cell::Cell;
+use std::collections::BTreeMap;
 
 use anyhow::Result;
 use crossterm::event::KeyEvent;
 use ratada::quit::QuitConfirm;
 use ratada::theme::{
-    DEFAULT_THEME, GlyphVariant, Glyphs, Palette, Skin, ThemeRegistry,
+    ColorOverrides, DEFAULT_THEME, GlyphVariant, Glyphs, Palette, Skin,
+    ThemeRegistry,
 };
 use ratada::{Flow, Screen, Tui, clipboard, modal, quit, shortcut_hints};
 use ratatui::Frame;
@@ -48,6 +50,9 @@ pub struct App {
     skin: Skin,
     registry: ThemeRegistry,
     theme: String,
+    /// The `[appearance.colors]` overrides, re-applied whenever the theme
+    /// changes so a runtime theme switch never loses them.
+    overrides: BTreeMap<String, String>,
     keymap: Keymap,
     highlight: Highlight,
     confirm_delete: bool,
@@ -85,6 +90,7 @@ impl App {
             skin,
             registry,
             theme: config.appearance.theme.clone(),
+            overrides: config.appearance.colors.clone(),
             keymap: config.keymap(),
             highlight: Highlight::new(&config.highlight),
             confirm_delete: config.confirm_delete,
@@ -151,6 +157,11 @@ impl App {
 
     /// Switches the active theme by name, falling back to the default when the
     /// name is unknown.
+    ///
+    /// The configured colour overrides are re-applied on top, exactly as at
+    /// startup. Dropping them here would undo calcli's own defaults (the red
+    /// block cursor, the input fills) on every restart, because restoring the
+    /// persisted theme name comes through this path.
     fn set_theme(&mut self, name: &str) {
         let name = if self.registry.contains(name) {
             name.to_string()
@@ -160,10 +171,16 @@ impl App {
         };
         let base = self.registry.resolve(&name);
         let mut skin = self.skin;
-        skin.palette =
-            Palette::resolve(base, &ratada::theme::ColorOverrides::default());
+        skin.palette = Palette::resolve(base, &self.color_overrides());
         self.set_skin(skin);
         self.theme = name;
+    }
+
+    /// The configured colour overrides, layered over whichever theme is active.
+    fn color_overrides(&self) -> ColorOverrides<'_> {
+        ColorOverrides::from_lookup(|name| {
+            self.overrides.get(name).map_or("", String::as_str)
+        })
     }
 
     /// Switches the glyph variant.
@@ -1208,6 +1225,7 @@ mod tests {
     use ratatui::backend::TestBackend;
 
     use super::*;
+    use crate::config::CALCLI_THEME;
     use crate::domain::evaluator::MevalEvaluator;
     use crate::domain::history::History;
     use crate::domain::variables::VariableStore;
@@ -1721,6 +1739,47 @@ mod tests {
         let screen = render_to_string(&app, 40, 12);
         assert!(screen.contains("input"), "the input box survives");
         assert!(!screen.contains("f12/?"), "the hint band gives way");
+    }
+
+    #[test]
+    fn restoring_a_persisted_theme_keeps_the_configured_colour_overrides() {
+        // `restore` runs `set_theme` for the saved theme name, so a real
+        // restart went through the theme path. Resolving without the overrides
+        // there silently undid calcli's own defaults: the red block cursor
+        // turned accent-green and the input field turned bright.
+        let config = Config::default();
+        let expected = config.palette();
+
+        let service = CalcService::new(
+            Box::new(MevalEvaluator::new()),
+            config.format_settings(),
+            History::new(100),
+            VariableStore::new(),
+        );
+        let restored = UiState {
+            theme: Some(CALCLI_THEME.to_string()),
+            ..UiState::default()
+        };
+        let app = App::new(service, &config, &restored);
+
+        let palette = app.skin().palette;
+        assert_eq!(palette.cursor, expected.cursor, "the red block cursor");
+        assert_eq!(palette.input_bg, expected.input_bg);
+        assert_eq!(palette.input_bg_active, expected.input_bg_active);
+        assert_ne!(palette.cursor, palette.accent);
+    }
+
+    #[test]
+    fn cycling_the_theme_at_runtime_keeps_the_colour_overrides() {
+        let mut app = test_app();
+        let cursor = app.skin().palette.cursor;
+        app.set_theme("monochrome");
+        assert_eq!(app.skin().palette.cursor, cursor, "the override survives");
+        // The theme's own colours did change.
+        assert_ne!(
+            app.skin().palette.accent,
+            Config::default().palette().accent
+        );
     }
 
     #[test]

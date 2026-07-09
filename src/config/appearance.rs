@@ -12,6 +12,27 @@ pub const CALCLI_THEME: &str = "calcli";
 /// palette colour derived by `ratada`, not a theme base colour.
 pub const DEFAULT_CURSOR_COLOR: &str = "#d65c5c";
 
+/// The input field's resting and focused fills.
+///
+/// `ratada` derives these by lightening `surface`, which assumes a mid-dark
+/// surface. calcli's surface is near-black, so the derivation overshoots and
+/// the field ends up brighter than its own border.
+///
+/// At rest the field sits *below* the content surface, receding into it. With
+/// the keyboard it lifts clearly above the surface, so where you are typing is
+/// never in doubt - but it stays below the border drawn around it. Both are
+/// overridable under `[appearance.colors]`.
+pub const DEFAULT_INPUT_BG: &str = "#100e15";
+pub const DEFAULT_INPUT_BG_ACTIVE: &str = "#262336";
+
+/// The tint behind the selected history entry and the selected list row.
+///
+/// `ratada` derives it as `surface.mix(accent, 0.35)`, which on calcli's
+/// near-black surface lands brighter than the border and shouts. This keeps the
+/// accent tint - the row still reads as "here" - at roughly the weight of the
+/// focused input field. Overridable under `[appearance.colors]`.
+pub const DEFAULT_SELECTION_COLOR: &str = "#354440";
+
 /// User-facing appearance configuration. `theme` names a theme (built-in,
 /// calcli's own, or one defined under `[themes.<name>]`); `colors` holds
 /// optional per-colour overrides keyed by palette colour name, resolved by
@@ -31,10 +52,15 @@ impl Default for Appearance {
     fn default() -> Self {
         Appearance {
             theme: CALCLI_THEME.to_string(),
-            colors: BTreeMap::from([(
-                "cursor".to_string(),
-                DEFAULT_CURSOR_COLOR.to_string(),
-            )]),
+            colors: BTreeMap::from([
+                ("cursor".to_string(), DEFAULT_CURSOR_COLOR.to_string()),
+                ("input_bg".to_string(), DEFAULT_INPUT_BG.to_string()),
+                (
+                    "input_bg_active".to_string(),
+                    DEFAULT_INPUT_BG_ACTIVE.to_string(),
+                ),
+                ("selection".to_string(), DEFAULT_SELECTION_COLOR.to_string()),
+            ]),
             glyphs: GlyphVariant::default(),
         }
     }
@@ -53,5 +79,27 @@ mod tests {
             Some(DEFAULT_CURSOR_COLOR),
         );
         assert_eq!(appearance.glyphs, GlyphVariant::Unicode);
+    }
+
+    #[test]
+    fn the_selection_tint_is_defaulted_rather_than_derived() {
+        let appearance = Appearance::default();
+        assert_eq!(
+            appearance.colors.get("selection").map(String::as_str),
+            Some(DEFAULT_SELECTION_COLOR),
+        );
+    }
+
+    #[test]
+    fn the_input_fills_are_defaulted_rather_than_derived() {
+        let appearance = Appearance::default();
+        assert_eq!(
+            appearance.colors.get("input_bg").map(String::as_str),
+            Some(DEFAULT_INPUT_BG),
+        );
+        assert_eq!(
+            appearance.colors.get("input_bg_active").map(String::as_str),
+            Some(DEFAULT_INPUT_BG_ACTIVE),
+        );
     }
 }

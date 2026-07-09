@@ -220,6 +220,75 @@ mod tests {
         assert_eq!(Config::default().palette().background, Color::Default);
     }
 
+    /// The input fills are hand-tuned rather than derived, so these pin the
+    /// relationships that make the field readable, not the exact hex values.
+    /// Retuning a colour should not break a test; inverting the design should.
+    #[test]
+    fn the_input_field_recedes_at_rest_and_lifts_when_focused() {
+        let palette = Config::default().palette();
+        let surface = palette.surface.luminance();
+
+        // At rest the field sinks into the content it sits on ...
+        assert!(palette.input_bg.luminance() < surface, "resting fill");
+        // ... but never below the header/status bands, or it would read as a
+        // hole punched through the panel.
+        assert!(palette.input_bg.luminance() > palette.header.luminance());
+
+        // Focused, it lifts clearly above the surface, so where the keyboard is
+        // is never in doubt ...
+        assert!(
+            palette.input_bg_active.luminance() > surface,
+            "focused fill"
+        );
+        // ... yet stays below its own border, which is exactly what `ratada`'s
+        // lighten-the-surface derivation gets wrong on a near-black surface.
+        assert!(
+            palette.input_bg_active.luminance() < palette.border.luminance()
+        );
+    }
+
+    /// Hand-tuned like the input fills, so pin the relationships rather than
+    /// the hex value: retuning the tint must not break a test.
+    #[test]
+    fn the_selected_row_is_marked_without_shouting() {
+        let palette = Config::default().palette();
+
+        // Visible against the content it tints ...
+        assert!(palette.selection.luminance() > palette.surface.luminance());
+        // ... but never brighter than the frame lines around it, which is what
+        // `ratada`'s mix-a-third-of-the-accent derivation produces here.
+        assert!(palette.selection.luminance() < palette.border.luminance());
+
+        // It still carries the accent's hue, so the row reads as "here" rather
+        // than as a plain grey block.
+        let (red, green, blue) =
+            palette.selection.rgb().expect("a concrete colour");
+        assert!(green > red && green > blue, "the accent tint survives");
+    }
+
+    #[test]
+    fn a_selection_override_still_wins() {
+        let config = loader::config_from_str(
+            "[appearance.colors]\nselection = \"#010203\"\n",
+        )
+        .expect("parses");
+        assert_eq!(config.palette().selection, Color::Rgb(1, 2, 3));
+    }
+
+    #[test]
+    fn an_input_fill_override_still_wins() {
+        let config = loader::config_from_str(
+            "[appearance.colors]\ninput_bg = \"#010203\"\n",
+        )
+        .expect("parses");
+        assert_eq!(config.palette().input_bg, Color::Rgb(1, 2, 3));
+        // The other default survives the partial override.
+        assert_eq!(
+            config.palette().input_bg_active,
+            Color::hex(appearance::DEFAULT_INPUT_BG_ACTIVE),
+        );
+    }
+
     #[test]
     fn the_block_cursor_stays_red_rather_than_following_the_accent() {
         let palette = Config::default().palette();

@@ -31,6 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - A `state.toml` written before units existed – where a dimensionless variable was a bare number (`g = 9.81`) rather than a table – failed to parse, and the failure was swallowed by starting from an empty session. Upgrading silently discarded the user's settings, variables and history. Both shapes are now read; the table is written.
+- Restoring the persisted theme dropped the configured colour overrides, so on every restart the block cursor turned accent-coloured and the input field turned bright. The overrides are now re-applied whenever the theme changes, at startup and when cycling it at runtime.
 
 ### Removed
 

@@ -93,6 +93,18 @@ glyphs = "unicode"
 # The block cursor in the input field, deliberately distinct from the accent.
 cursor = "#d65c5c"
 
+# The input field's resting and focused fills. Left to itself the toolkit derives
+# these by lightening `surface`, which overshoots on calcli's near-black surface.
+# At rest the field recedes into the content; focused it lifts clearly above it,
+# but stays below its own border.
+input_bg = "#100e15"
+input_bg_active = "#262336"
+
+# The tint behind the selected history entry and the selected list row. Derived
+# by mixing a third of the accent into `surface`, which shouts on calcli's dark
+# surface; this keeps the accent hue at the weight of the focused input field.
+selection = "#283431"
+
 
 ## Syntax highlighting ########################################################
 
