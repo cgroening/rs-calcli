@@ -7,6 +7,7 @@
 //! All values are full-precision `f64`s; rounding lives in
 //! [`crate::domain::format`].
 
+use crate::domain::errors::{AppError, Result};
 use crate::domain::evaluator::Evaluator;
 use crate::domain::expression::{self, Statement};
 use crate::domain::format::{
@@ -329,7 +330,7 @@ fn evaluate_line(
         Statement::Expression(expr) => {
             match eval_expression(evaluator, variables, settings, &expr, ans) {
                 Ok(value) => (Some(value), None),
-                Err(message) => (None, Some(message)),
+                Err(error) => (None, Some(error.to_string())),
             }
         }
     }
@@ -341,15 +342,15 @@ fn save_ans(
     name: &str,
     ans: Option<Quantity>,
 ) -> LineResult {
-    if let Some(message) = reject_name(name) {
-        return (None, Some(message));
+    if let Some(error) = reject_name(name) {
+        return (None, Some(error.to_string()));
     }
     match ans {
         Some(value) => {
             variables.set(name, value.clone());
             (Some(value), None)
         }
-        None => (None, Some("no previous answer to save".to_string())),
+        None => (None, Some(AppError::NoAnswerToSave.to_string())),
     }
 }
 
@@ -362,15 +363,15 @@ fn assign(
     expr: &str,
     ans: Option<Quantity>,
 ) -> LineResult {
-    if let Some(message) = reject_name(name) {
-        return (None, Some(message));
+    if let Some(error) = reject_name(name) {
+        return (None, Some(error.to_string()));
     }
     match eval_expression(evaluator, variables, settings, expr, ans) {
         Ok(value) => {
             variables.set(name, value.clone());
             (Some(value), None)
         }
-        Err(message) => (None, Some(message)),
+        Err(error) => (None, Some(error.to_string())),
     }
 }
 
@@ -387,10 +388,10 @@ fn eval_expression(
     settings: &FormatSettings,
     expr: &str,
     ans: Option<Quantity>,
-) -> Result<Quantity, String> {
+) -> Result<Quantity> {
     let trimmed = expr.trim();
     if trimmed == "ans" {
-        return ans.ok_or_else(|| "no previous answer".to_string());
+        return ans.ok_or(AppError::NoPreviousAnswer);
     }
     if let Some(quantity) = variables.get(trimmed) {
         return Ok(quantity.clone());
@@ -460,7 +461,7 @@ fn eval_with_rink(
     settings: &FormatSettings,
     expr: &str,
     ans: Option<Quantity>,
-) -> Result<Quantity, String> {
+) -> Result<Quantity> {
     let prepared = substitute_for_units(variables, settings, expr, ans)?;
 
     // A conversion: rink validates the dimensions and reports the value in the
@@ -494,7 +495,7 @@ fn substitute_for_units(
     settings: &FormatSettings,
     expr: &str,
     ans: Option<Quantity>,
-) -> Result<String, String> {
+) -> Result<String> {
     let mut prepared = prepare_units_expr(expr, settings.decimal_separator);
     let leading_operator =
         prepared.trim_start().starts_with(['+', '-', '*', '/', '^']);
@@ -502,9 +503,7 @@ fn substitute_for_units(
         prepared = format!("ans {prepared}");
     }
     if expression::references(&prepared, "ans") {
-        let value = ans
-            .as_ref()
-            .ok_or_else(|| "no previous answer".to_string())?;
+        let value = ans.as_ref().ok_or(AppError::NoPreviousAnswer)?;
         prepared = expression::substitute_identifier_with(
             &prepared,
             "ans",
@@ -570,7 +569,7 @@ fn eval_with_meval(
     settings: &FormatSettings,
     expr: &str,
     ans: Option<Quantity>,
-) -> Result<f64, String> {
+) -> Result<f64> {
     let prepared = expression::preprocess(expr, settings.decimal_separator);
     let ans_number = ans
         .as_ref()
@@ -588,18 +587,17 @@ fn eval_with_meval(
             );
         }
     }
-    evaluator
-        .eval(&prepared, settings.angle_mode)
-        .map_err(|error| error.to_string())
+    // The evaluator already speaks `AppError`; there is nothing to translate.
+    evaluator.eval(&prepared, settings.angle_mode)
 }
 
-/// Returns an error message when `name` is invalid or reserved, else `None`.
-fn reject_name(name: &str) -> Option<String> {
+/// The reason `name` cannot be a variable, or `None` when it can.
+fn reject_name(name: &str) -> Option<AppError> {
     if !expression::is_valid_var_name(name) {
-        return Some(format!("invalid variable name: '{name}'"));
+        return Some(AppError::InvalidVariableName(name.to_string()));
     }
     if RESERVED_NAMES.contains(&name) {
-        return Some(format!("'{name}' is reserved and cannot be a variable"));
+        return Some(AppError::ReservedName(name.to_string()));
     }
     None
 }
@@ -607,6 +605,7 @@ fn reject_name(name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use crate::domain::evaluator::MevalEvaluator;
     use crate::domain::format::{AngleMode, Notation};
 
@@ -942,5 +941,47 @@ mod tests {
         service.toggle_angle_mode();
         let outcome = service.submit("sin(90)");
         assert!((outval(&outcome).unwrap() - 1.0).abs() < 1e-9);
+    }
+
+    /// The status line and the persisted history show these verbatim, so they
+    /// are behaviour, not implementation. `AppError` produces each of them.
+    #[test]
+    fn every_failure_mode_keeps_its_message() {
+        let cases: &[(&[&str], &str)] = &[
+            (&["ans"], "no previous answer"),
+            (&["ans -> m"], "no previous answer"),
+            (&["=x"], "no previous answer to save"),
+            (&["1", "=1bad"], "invalid variable name: '1bad'"),
+            (&["1", "=pi"], "'pi' is reserved and cannot be a variable"),
+            (
+                &["2+"],
+                "cannot evaluate: Parse error: Missing argument at the end of \
+                 expression.",
+            ),
+            (
+                &["5 N -> bar"],
+                "Conformance error: 5 newton (force) != 100 kilopascal \
+                 (pressure)",
+            ),
+        ];
+        for (lines, expected) in cases {
+            let mut calc = service();
+            let mut outcome = None;
+            for line in *lines {
+                outcome = Some(calc.submit(line));
+            }
+            let error = outcome.expect("a submitted line").error;
+            assert_eq!(error.as_deref(), Some(*expected), "for {lines:?}");
+        }
+    }
+
+    #[test]
+    fn a_rink_message_is_not_prefixed_like_a_meval_one() {
+        // rink names the offending unit itself; meval yields a fragment.
+        let rink = service().submit("1 foounit -> m").error.expect("an error");
+        assert!(rink.starts_with("No such unit"), "{rink}");
+
+        let meval = service().submit("2+").error.expect("an error");
+        assert!(meval.starts_with("cannot evaluate: "), "{meval}");
     }
 }

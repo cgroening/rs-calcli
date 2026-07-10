@@ -40,12 +40,14 @@ const CALCLI_COLORS: ThemeColors = ThemeColors {
     background: Color::Default,
     header: Color::hex("#0e0c12"),
     footer: Color::hex("#0e0c12"),
-    panel: Color::hex("#16141d"),
+    // A step above `surface`, because that is what tints every second history
+    // entry when `history_zebra` is on. Equal to `surface` the stripe would be
+    // painted in the colour of its own background and do nothing.
+    panel: Color::hex("#1b1926"),
     surface: Color::hex("#16141d"),
     border: Color::hex("#3e3e3e"),
-    // The lifted border the focused input box draws, so its frame keeps its
-    // contrast against the brighter focused fill. `border.lighten(0.15)`, the
-    // toolkit's own derivation, spelled out because `lighten` is not `const`.
+    // The border the focused input box draws. It has to hold its contrast
+    // against the brighter focused fill, where a fixed `border` would fade out.
     border_focus: Color::hex("#4a7c60"),
     success: Color::hex("#a3c995"),
     warning: Color::hex("#ded483"),
@@ -227,6 +229,22 @@ mod tests {
     /// The input fills are hand-tuned rather than derived, so these pin the
     /// relationships that make the field readable, not the exact hex values.
     /// Retuning a colour should not break a test; inverting the design should.
+    /// The zebra stripe of every second history entry is tinted with `panel`.
+    /// A `panel` equal to `surface` paints the row in the colour of its own
+    /// background, so `history_zebra = true` does nothing at all.
+    #[test]
+    fn the_panel_tint_is_visible_against_the_content_surface() {
+        let palette = Config::default().palette();
+        assert_ne!(
+            palette.panel, palette.surface,
+            "history_zebra would tint a row in the surface colour",
+        );
+        // Raised, as the name says ...
+        assert!(palette.panel.luminance() > palette.surface.luminance());
+        // ... but far below the selected row, which must still stand out.
+        assert!(palette.panel.luminance() < palette.selection.luminance());
+    }
+
     #[test]
     fn the_input_field_recedes_at_rest_and_lifts_when_focused() {
         let palette = Config::default().palette();

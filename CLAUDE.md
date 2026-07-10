@@ -138,8 +138,13 @@ CLI-Schicht (`cli/` + `sparcli`), GUI. calcli ist bewusst TUI-only: es gibt
 keine Subcommands und keine `println!`-Ausgabe – `sparcli` wird daher nicht
 eingebunden.
 
-## Altlasten (nicht Vorbild)
+## Fehler-Meldungen sind Verhalten
 
-- `services/calc_service.rs` nutzt intern `Result<T, String>`; der Style Guide
-  (§8.3) nennt das ausdrücklich als Altlast. Bei Gelegenheit auf einen eigenen
-  Fehler-Typ umstellen.
+`AppError` (`domain/errors.rs`) ist der einzige Fehlertyp der Domäne; das
+`Display` jeder Variante ist genau das, was der Nutzer in der Statuszeile liest
+und was die History für eine fehlgeschlagene Zeile speichert. Eine Meldung zu
+ändern ist eine nutzersichtbare Änderung, kein Refactoring – `AppError::Units`
+gibt rinks Wortlaut deshalb unverändert weiter (rink formuliert ganze Sätze),
+während `AppError::Calculator` das Fragment von meval präfixiert.
+`every_failure_mode_keeps_its_message` in `calc_service.rs` friert alle
+Meldungen ein.

@@ -29,11 +29,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Variables moved from an overlay to a view of their own.
 - Config: the flat `[theme]` table is superseded by `[appearance]`, `[appearance.colors]` and `[highlight]`. A 0.2 `config.toml` still loads unchanged, its colours mapped onto the new sections.
 - `state.toml` is written atomically, and gained a `[ui]` section (active view, theme, glyphs, hint visibility). Older state files load unchanged.
-- The domain error type no longer names files or TOML; infrastructure errors are funnelled into it at the service boundary.
+- The domain error type no longer names files or TOML; infrastructure errors are funnelled into it at the service boundary. The service itself no longer passes error messages around as bare `String`s: `AppError` now carries every failure, and `domain::units` returns it too. The wording of every message is unchanged and pinned by a test.
 - `ratatui` 0.29 → 0.30, `crossterm` 0.28 → 0.29; the `arboard` dependency was dropped in favour of the toolkit's clipboard. Minimum supported Rust version is now 1.88.
 
 ### Fixed
 
+- `history_zebra = true` did nothing: the `calcli` theme gave `panel` – the colour the stripe is tinted with – the same value as `surface`, so every second history entry was painted in the colour of its own background. `panel` now sits a step above the surface.
 - A `[themes.<name>]` table naming a colour the toolkit derives (`cursor`,
   `selection`, the input fills, …) had the value silently discarded: the table
   was validated against every palette colour, but only the theme's own base

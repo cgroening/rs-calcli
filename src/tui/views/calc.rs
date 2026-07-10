@@ -581,6 +581,33 @@ mod tests {
     use super::*;
     use crate::config::Config;
 
+    /// A view carrying nothing but what `row_bg` reads.
+    fn zebra_view(zebra: Option<ratatui::style::Color>) -> CalcView<'static> {
+        CalcView {
+            rows: &[],
+            selected: None,
+            mode: Mode::Input,
+            input: "",
+            cursor: TextCursor::at(0),
+            input_styles: &[],
+            row_styles: &[],
+            caret: CaretColors {
+                cursor: ratatui::style::Color::Reset,
+                selection: ratatui::style::Color::Reset,
+            },
+            style: HistoryStyle {
+                spacing: 1,
+                separator: None,
+                zebra,
+            },
+            accent_color: ratatui::style::Color::Reset,
+            error_color: ratatui::style::Color::Reset,
+            warn: "!",
+            feedback: None,
+            input_max_lines: 5,
+        }
+    }
+
     fn skin() -> Skin {
         Skin::new(
             Config::default().palette(),
@@ -598,6 +625,52 @@ mod tests {
         let skin = skin();
         let border = focus_skin(&skin, mode).palette.border;
         (luminance(border) - luminance(input_fill(&skin, mode))).abs()
+    }
+
+    /// Every second history entry gets the `panel` tint. If that colour equals
+    /// the surface it sits on, `history_zebra = true` is a no-op.
+    #[test]
+    fn zebra_striping_tints_every_second_row_visibly() {
+        let skin = skin();
+        let zebra = Some(to_ratatui(skin.palette.panel));
+        let view = zebra_view(zebra);
+
+        assert_eq!(row_bg(&view, &skin, 0), None, "the first row is untinted");
+        let striped =
+            row_bg(&view, &skin, 1).expect("the second row is tinted");
+        assert_ne!(
+            striped,
+            to_ratatui(skin.palette.surface),
+            "the stripe is invisible against its own background",
+        );
+    }
+
+    #[test]
+    fn zebra_striping_yields_to_the_selection_and_the_editor() {
+        let skin = skin();
+        let zebra = Some(to_ratatui(skin.palette.panel));
+
+        let mut view = zebra_view(zebra);
+        view.selected = Some(1);
+        assert_eq!(
+            row_bg(&view, &skin, 1),
+            Some(to_ratatui(skin.palette.selection)),
+        );
+
+        let mut view = zebra_view(zebra);
+        view.mode = Mode::Edit(1);
+        assert_eq!(
+            row_bg(&view, &skin, 1),
+            Some(to_ratatui(skin.palette.input_bg_active)),
+        );
+    }
+
+    #[test]
+    fn zebra_off_leaves_every_row_untinted() {
+        let skin = skin();
+        let view = zebra_view(None);
+        assert_eq!(row_bg(&view, &skin, 0), None);
+        assert_eq!(row_bg(&view, &skin, 1), None);
     }
 
     #[test]

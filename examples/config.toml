@@ -57,7 +57,8 @@ confirm_quit = false
 
 ## The history list ###########################################################
 
-# Tint every second history entry (zebra striping); uses the `panel` colour.
+# Tint every second history entry (zebra striping). The stripe takes the `panel`
+# colour, so a theme whose `panel` equals its `surface` makes it invisible.
 history_zebra = false
 
 # Blank lines inserted after each history entry's result.
@@ -106,7 +107,7 @@ input_bg_active = "#262336"
 # The `calcli` theme sets both, so neither needs an override here.
 #
 # border = "#3e3e3e"
-# border_focus = "#676767"
+# border_focus = "#4a7c60"
 
 # The tint behind the selected history entry and the selected list row. Derived
 # by mixing a third of the accent into `surface`, which shouts on calcli's dark

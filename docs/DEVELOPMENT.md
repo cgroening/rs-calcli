@@ -158,8 +158,20 @@ Two sections, two key sets, and they are not the same:
 The input box's focused frame is `palette.border_focus`, a toolkit colour that
 follows `border` unless it is set. `tui/views/calc.rs::focus_skin` swaps it into
 `border` on a `Skin` copy rather than only styling `border_style`, because
-`chrome::border_title` reads the title's leading stroke from `palette.border` —
+`chrome::border_title` reads the title's leading stroke from `palette.border` –
 that one stroke would otherwise stay dark.
+
+## Error messages
+
+`AppError` (`domain/errors.rs`) is the domain's only error type, and each
+variant's `Display` is exactly what the user reads in the status line and what
+the history stores for a failed line. Changing the wording is a user-visible
+change, not a refactor; `every_failure_mode_keeps_its_message` in
+`services/calc_service.rs` pins all of them.
+
+Two variants differ on purpose: `Calculator` prefixes meval's fragment with
+"cannot evaluate: ", while `Units` renders rink's message verbatim, because rink
+already phrases whole sentences that name the offending unit.
 
 ## On-disk compatibility
 

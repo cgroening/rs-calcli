@@ -15,6 +15,8 @@ use std::collections::HashMap;
 use rink_core::output::QueryReply;
 use rink_core::{Context, eval as rink_eval, simple_context};
 
+use crate::domain::errors::{AppError, Result};
+
 thread_local! {
     /// The lazily-built rink context, reused across evaluations on this thread.
     static CONTEXT: RefCell<Option<Context>> = const { RefCell::new(None) };
@@ -44,12 +46,15 @@ fn with_context<T>(f: impl FnOnce(&mut Context) -> T) -> T {
 /// exception: rink reports the value already in `X`.
 ///
 /// # Errors
-/// Returns a one-line message when rink cannot parse the query, the units are
-/// incompatible, or the result is not a plain number.
-pub fn eval(query: &str) -> Result<(f64, Option<String>), String> {
+///
+/// Returns [`AppError::Units`] when rink cannot parse the query, the units are
+/// incompatible, or the result is not a plain number. rink's own one-line
+/// wording is kept, since it names the offending unit.
+pub fn eval(query: &str) -> Result<(f64, Option<String>)> {
     let reply = with_context(|ctx| rink_eval(ctx, query))
-        .map_err(|error| first_line(&error.to_string()))?;
-    extract(&reply).ok_or_else(|| "not a numeric result".to_string())
+        .map_err(|error| AppError::Units(first_line(&error.to_string())))?;
+    extract(&reply)
+        .ok_or_else(|| AppError::Units("not a numeric result".to_string()))
 }
 
 /// The SI base-unit magnitude of one `unit` (e.g. `1000` for `kN`/`kilonewton`,
@@ -60,8 +65,9 @@ pub fn eval(query: &str) -> Result<(f64, Option<String>), String> {
 /// unit. Memoized indirectly through rink's context.
 ///
 /// # Errors
-/// Returns a message when `unit` is not a unit rink can evaluate.
-pub fn scale_of(unit: &str) -> Result<f64, String> {
+///
+/// Returns [`AppError::Units`] when `unit` is not a unit rink can evaluate.
+pub fn scale_of(unit: &str) -> Result<f64> {
     let (value, _) = eval(&format!("1 {unit}"))?;
     Ok(value)
 }
