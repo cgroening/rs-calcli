@@ -14,7 +14,7 @@ use ratada::autocomplete::{AcOutcome, Autocomplete};
 use ratada::command_palette::CommandItem;
 use ratada::quit::QuitConfirm;
 use ratada::theme::{
-    ColorOverrides, DEFAULT_THEME, GlyphVariant, Glyphs, Palette, Skin,
+    Color, ColorOverrides, DEFAULT_THEME, GlyphVariant, Glyphs, Palette, Skin,
     ThemeRegistry,
 };
 use ratada::{
@@ -446,10 +446,12 @@ impl App {
             .map(|entry| self.styles_of(&entry.input))
             .collect();
         let input_styles = self.styles_of(&self.input);
+        // Colour of the autocomplete suggestion text. Set a concrete RGB here.
+        let completion_text = Color::Rgb(190, 190, 190);
         let completion = self.autocomplete.lines(
             &self.skin.palette,
             0,
-            style::secondary(&self.skin.palette),
+            style::fg(completion_text),
         );
 
         let view = CalcView {

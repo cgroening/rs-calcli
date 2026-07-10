@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- The autocomplete dropdown now uses lighter background, text and border colours (`input_bg`, `foreground` and `border_focus` from the theme) so it stands out from the content surface beneath it.
 - The interface now follows the shared `clibase` panel layout: a tinted header panel carrying only the brand and the tab bar, a raised content surface, a tinted status band and backgroundless shortcut hints. The settings bar and the transient status moved into the status band. The app frame draws no border lines; rounded borders are reserved for individual widgets.
 - Widgets, theming, modals, the help overlay, the terminal guard, the event loop and the clipboard now come from the shared `ratada` toolkit instead of being kept in-tree. The syntax-highlighting input editor stays app-local, because the toolkit's text widgets render plain text only.
 - Modals (delete, clear, reset, quit) dim the live view behind them instead of a blank backdrop, and `Ctrl+Q` inside a modal now exits the app.
@@ -37,6 +38,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Pressing `↑` on the first autocomplete suggestion cleared the highlight instead of moving within the dropdown. Navigation now wraps cyclically: `↑` on the first row lands on the last and `↓` on the last returns to the first.
 - A `[themes.<name>]` table naming a colour the toolkit derives (`cursor`,
   `selection`, the input fills, …) had the value silently discarded: the table
   was validated against every palette colour, but only the theme's own base

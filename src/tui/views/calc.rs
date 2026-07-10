@@ -161,8 +161,8 @@ fn render_completion(
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(style::border(&skin.palette))
-        .style(style::bg(skin.palette.surface))
+        .border_style(style::border_focus(&skin.palette))
+        .style(style::bg(skin.palette.input_bg))
         .padding(Padding::horizontal(1));
     frame.render_widget(Clear, box_area);
     frame.render_widget(
