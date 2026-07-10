@@ -10,17 +10,22 @@ use std::collections::BTreeMap;
 
 use anyhow::Result;
 use crossterm::event::KeyEvent;
+use ratada::autocomplete::{AcOutcome, Autocomplete};
+use ratada::command_palette::CommandItem;
 use ratada::quit::QuitConfirm;
 use ratada::theme::{
     ColorOverrides, DEFAULT_THEME, GlyphVariant, Glyphs, Palette, Skin,
     ThemeRegistry,
 };
-use ratada::{Flow, Screen, Tui, clipboard, modal, quit, shortcut_hints};
+use ratada::{
+    Flow, Screen, Tui, clipboard, modal, quit, shortcut_hints, style,
+};
 use ratatui::Frame;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use crate::config::Config;
+use crate::domain::completion;
 use crate::domain::format::{AngleMode, Notation};
 use crate::domain::highlight;
 use crate::domain::quantity::Quantity;
@@ -32,7 +37,7 @@ use crate::storage::{
 use crate::tui::appframe::{self, FrameContext, HintGroups};
 use crate::tui::bindings;
 use crate::tui::colors::{CaretColors, Highlight, styles_for, to_ratatui};
-use crate::tui::interaction::{Answer, Interaction, Modals};
+use crate::tui::interaction::{Answer, Interaction, Modals, Selection};
 use crate::tui::text_edit::{self, TextCursor};
 use crate::tui::views::ViewId;
 use crate::tui::views::calc::{
@@ -64,6 +69,9 @@ pub struct App {
     active: ViewId,
     input: String,
     cursor: TextCursor,
+    /// The suggestion dropdown for the input field, rebuilt from the current
+    /// variables plus the built-in names on every edit.
+    autocomplete: Autocomplete,
     mode: Mode,
     selected: Option<usize>,
     var_selected: usize,
@@ -85,6 +93,8 @@ impl App {
         let registry = config.theme_registry();
         let skin =
             Skin::new(config.palette(), Glyphs::new(config.appearance.glyphs));
+        let autocomplete =
+            Autocomplete::new(completion::candidates(service.variables()));
         let mut app = App {
             service,
             skin,
@@ -105,6 +115,7 @@ impl App {
             active: ViewId::Calc,
             input: String::new(),
             cursor: TextCursor::at(0),
+            autocomplete,
             mode: Mode::Input,
             selected: None,
             var_selected: 0,
@@ -311,7 +322,11 @@ impl App {
     /// toolkit's (`f1 toggle hints`, `ctrl+q force quit`). One helper feeds
     /// both the footer and the help overlay, so they cannot drift apart.
     fn global_group(&self) -> (String, Vec<(String, String)>) {
-        let mut hints = self.keymap.hints(&[Action::OpenHelp, Action::Quit]);
+        let mut hints = self.keymap.hints(&[
+            Action::OpenPalette,
+            Action::OpenHelp,
+            Action::Quit,
+        ]);
         hints.extend(shortcut_hints::global_bindings());
         (GLOBAL_GROUP.to_string(), hints)
     }
@@ -431,6 +446,11 @@ impl App {
             .map(|entry| self.styles_of(&entry.input))
             .collect();
         let input_styles = self.styles_of(&self.input);
+        let completion = self.autocomplete.lines(
+            &self.skin.palette,
+            0,
+            style::secondary(&self.skin.palette),
+        );
 
         let view = CalcView {
             rows: &rows,
@@ -440,6 +460,7 @@ impl App {
             cursor: self.cursor,
             input_styles: &input_styles,
             row_styles: &row_styles,
+            completion,
             caret: CaretColors::from_palette(&self.skin.palette),
             style: HistoryStyle {
                 spacing: self.history.spacing,
@@ -580,16 +601,65 @@ impl App {
         self.status = None;
         let context = self.context();
 
-        if let Some(action) = self.keymap.action_for(&key, context)
-            && self.apply_action(action, io)?
-        {
-            return Ok(self.flow());
+        // An open suggestion dropdown claims its own navigation keys first, so
+        // `Up`/`Down`/`Enter`/`Esc` steer it rather than the input field. Keys
+        // it ignores fall through to the normal path.
+        if self.autocomplete.is_open() {
+            match self.autocomplete.on_key(key) {
+                AcOutcome::Accepted(value) => {
+                    self.accept_completion(&value);
+                    return Ok(self.flow());
+                }
+                AcOutcome::Navigated | AcOutcome::Closed => {
+                    return Ok(self.flow());
+                }
+                AcOutcome::Ignored => {}
+            }
         }
+
+        let handled = match self.keymap.action_for(&key, context) {
+            Some(action) => self.apply_action(action, io)?,
+            None => false,
+        };
         // Anything the keymap did not claim belongs to the text editor.
-        if context.is_text_editing() {
+        if !handled && context.is_text_editing() {
             self.apply_edit_key(key);
         }
+        self.refresh_completion();
         Ok(self.flow())
+    }
+
+    /// Rebuilds the suggestion dropdown from the current variables and the
+    /// built-in names, matched against the identifier under the caret. Only the
+    /// input field completes; every other context leaves the dropdown closed.
+    fn refresh_completion(&mut self) {
+        // Only the input field completes. `mode` alone is not enough: it stays
+        // `Input` after switching to another view, so gate on the full context
+        // or the dropdown would linger there and steal `Up`/`Down`.
+        let query = if self.context() == Context::Input {
+            let range =
+                completion::identifier_before(&self.input, self.cursor.pos);
+            self.input
+                .chars()
+                .take(range.end)
+                .skip(range.start)
+                .collect()
+        } else {
+            String::new()
+        };
+        self.autocomplete =
+            Autocomplete::new(completion::candidates(self.service.variables()));
+        self.autocomplete.refresh(&query);
+    }
+
+    /// Replaces the whole identifier under the caret with an accepted
+    /// suggestion, so completing mid-word rewrites all of it rather than
+    /// leaving its tail behind.
+    fn accept_completion(&mut self, value: &str) {
+        let range = completion::identifier_at(&self.input, self.cursor.pos);
+        self.cursor.move_to(range.start);
+        self.cursor.extend_to(range.end);
+        text_edit::replace_selection(&mut self.input, &mut self.cursor, value);
     }
 
     /// Applies `action`, returning whether it was consumed.
@@ -654,6 +724,8 @@ impl App {
                 Some(value) => self.copy_plain(&value),
                 None => self.report("no result yet".to_string()),
             },
+            Action::SearchHistory => self.search_history(io)?,
+            Action::OpenPalette => self.open_palette(io)?,
             Action::OpenHelp => {
                 let answer = io.help(self)?;
                 self.absorb(answer);
@@ -678,6 +750,73 @@ impl App {
         if io.may_quit(self) {
             self.quit = true;
         }
+    }
+
+    /// Opens the fuzzy history finder and recalls the chosen expression into
+    /// the input. A `Ctrl+Q` inside it quits the app.
+    fn search_history(&mut self, io: &mut dyn Interaction) -> Result<()> {
+        let items: Vec<String> = self
+            .service
+            .history()
+            .entries()
+            .iter()
+            .rev()
+            .map(|entry| entry.input.clone())
+            .collect();
+        if items.is_empty() {
+            self.report("no history yet".to_string());
+            return Ok(());
+        }
+        match io.pick(self, " Search history ", &items)? {
+            Selection::Index(index) => self.recall(&items[index]),
+            Selection::None => {}
+            Selection::ForcedQuit => self.quit = true,
+        }
+        Ok(())
+    }
+
+    /// Recalls `expression` into the input field on the Calc view, caret at the
+    /// end, ready to edit or submit.
+    fn recall(&mut self, expression: &str) {
+        self.active = ViewId::Calc;
+        self.mode = Mode::Input;
+        self.selected = None;
+        self.input = expression.to_string();
+        self.cursor = TextCursor::at(self.input.chars().count());
+    }
+
+    /// Opens the command palette and runs the chosen action. Every action but
+    /// the palette itself is listed; one unavailable in the current context is
+    /// shown dimmed and cannot be picked. A `Ctrl+Q` inside it quits the app.
+    fn open_palette(&mut self, io: &mut dyn Interaction) -> Result<()> {
+        let context = self.context();
+        let actions: Vec<Action> = Action::all()
+            .filter(|a| *a != Action::OpenPalette)
+            .collect();
+        // The key hints are owned here so the borrowed `CommandItem`s can point
+        // into them for the length of the call.
+        let keys: Vec<String> = actions
+            .iter()
+            .map(|action| self.keymap.keys_for(*action).join(", "))
+            .collect();
+        let items: Vec<CommandItem<'_>> = actions
+            .iter()
+            .zip(&keys)
+            .map(|(action, key_hint)| CommandItem {
+                label: action.description(),
+                category: bindings::category_of(*action),
+                key_hint,
+                enabled: action.scope().is_active_in(context),
+            })
+            .collect();
+        match io.palette(self, &items)? {
+            Selection::Index(index) => {
+                self.apply_action(actions[index], io)?;
+            }
+            Selection::None => {}
+            Selection::ForcedQuit => self.quit = true,
+        }
+        Ok(())
     }
 
     /// Records a transient status message.
@@ -1354,6 +1493,216 @@ mod tests {
         press(&mut app, key(KeyCode::F(6)));
         assert!(!app.service().settings().trim_trailing_zeros);
         assert_eq!(app.status.as_deref(), Some("trailing zeros: fixed"));
+    }
+
+    // --- Autocomplete ---
+
+    /// Types `text` character by character through the normal key path.
+    fn type_text(app: &mut App, text: &str) {
+        for character in text.chars() {
+            press(app, key(KeyCode::Char(character)));
+        }
+    }
+
+    #[test]
+    fn typing_an_identifier_prefix_opens_the_suggestion_dropdown() {
+        let mut app = test_app();
+        type_text(&mut app, "si");
+        assert!(app.autocomplete.is_open());
+        // Hide the hints so the history area has room for the dropdown box;
+        // otherwise the grouped hints squeeze it out (content wins).
+        shortcut_hints::set_visible(false);
+        let screen = render_to_string(&app, 40, 24);
+        shortcut_hints::set_visible(true);
+        assert!(screen.contains("sin"));
+    }
+
+    #[test]
+    fn a_caret_after_an_operator_offers_no_suggestions() {
+        let mut app = test_app();
+        type_text(&mut app, "2+");
+        assert!(!app.autocomplete.is_open());
+    }
+
+    #[test]
+    fn navigating_and_confirming_replaces_the_typed_prefix() {
+        let mut app = test_app();
+        type_text(&mut app, "si");
+        press(&mut app, key(KeyCode::Down));
+        press(&mut app, key(KeyCode::Enter));
+        assert_eq!(app.input, "sin");
+        assert!(!app.autocomplete.is_open());
+    }
+
+    #[test]
+    fn a_suggestion_replaces_only_the_word_under_the_caret() {
+        let mut app = test_app();
+        type_text(&mut app, "2*co");
+        press(&mut app, key(KeyCode::Down));
+        press(&mut app, key(KeyCode::Enter));
+        assert_eq!(app.input, "2*cos");
+    }
+
+    #[test]
+    fn accepting_mid_word_rewrites_the_whole_identifier() {
+        let mut app = test_app();
+        render_to_string(&app, 80, 24);
+        type_text(&mut app, "sinh");
+        // Move the caret into the middle of the word: `si|nh`.
+        press(&mut app, key(KeyCode::Left));
+        press(&mut app, key(KeyCode::Left));
+        // The first match for the `si` prefix is `sin`; accepting it must
+        // replace the whole `sinh`, not just its head (which left `sinnh`).
+        press(&mut app, key(KeyCode::Down));
+        press(&mut app, key(KeyCode::Enter));
+        assert_eq!(app.input, "sin");
+    }
+
+    #[test]
+    fn a_bare_number_offers_no_suggestions() {
+        let mut app = test_app();
+        type_text(&mut app, "42");
+        assert!(!app.autocomplete.is_open());
+    }
+
+    #[test]
+    fn the_dropdown_never_overwrites_the_header_on_a_short_terminal() {
+        let mut app = test_app();
+        type_text(&mut app, "si");
+        assert!(app.autocomplete.is_open());
+        // Too short for the box above the input: it is dropped rather than
+        // spilling up over the tab bar.
+        let screen = render_to_string(&app, 40, 14);
+        assert!(screen.contains("Calc"), "the tab bar must survive intact");
+    }
+
+    #[test]
+    fn escape_closes_the_dropdown_before_clearing_the_input() {
+        let mut app = test_app();
+        type_text(&mut app, "si");
+        press(&mut app, key(KeyCode::Esc));
+        assert!(!app.autocomplete.is_open());
+        assert_eq!(app.input, "si", "the first Esc only closes the dropdown");
+        press(&mut app, key(KeyCode::Esc));
+        assert_eq!(app.input, "", "a second Esc clears the input");
+    }
+
+    #[test]
+    fn enter_submits_when_no_suggestion_is_highlighted() {
+        let mut app = test_app();
+        type_text(&mut app, "1+2");
+        press(&mut app, key(KeyCode::Enter));
+        assert_eq!(value_at(&app, 0), Some(3.0));
+        assert!(!app.autocomplete.is_open());
+    }
+
+    #[test]
+    fn a_defined_variable_is_offered_as_a_suggestion() {
+        let mut app = test_app();
+        submit(&mut app, "radius = 5");
+        type_text(&mut app, "rad");
+        assert!(app.autocomplete.is_open());
+        press(&mut app, key(KeyCode::Down));
+        press(&mut app, key(KeyCode::Enter));
+        assert_eq!(app.input, "radius");
+    }
+
+    #[test]
+    fn switching_views_closes_the_dropdown() {
+        let mut app = test_app();
+        type_text(&mut app, "si");
+        assert!(app.autocomplete.is_open());
+        // The Variables view must own `Up`/`Down`, not a lingering dropdown.
+        press(&mut app, chord(KeyCode::Char('2'), KeyModifiers::ALT));
+        assert_eq!(app.active, ViewId::Variables);
+        assert!(!app.autocomplete.is_open());
+    }
+
+    #[test]
+    fn page_up_still_enters_history_while_the_dropdown_is_open() {
+        let mut app = test_app();
+        submit(&mut app, "7");
+        type_text(&mut app, "si");
+        // A wide render puts the caret on the first line, so `Up` would qualify
+        // too; `PageUp` is the guaranteed escape while the dropdown owns `Up`.
+        render_to_string(&app, 80, 24);
+        assert!(app.autocomplete.is_open());
+        press(&mut app, key(KeyCode::PageUp));
+        assert_eq!(app.mode, Mode::History);
+    }
+
+    // --- History search ---
+
+    #[test]
+    fn searching_recalls_the_chosen_expression_into_the_input() {
+        let mut app = test_app();
+        submit(&mut app, "1+1");
+        submit(&mut app, "2*3");
+        // Items are newest first, so index 1 is the older "1+1".
+        let mut io = Headless::accepting().picking(1);
+        app.dispatch(chord(KeyCode::Char('r'), KeyModifiers::CONTROL), &mut io)
+            .expect("dispatch");
+        assert_eq!(app.input, "1+1");
+        assert_eq!(app.mode, Mode::Input);
+        assert_eq!(app.cursor.pos, 3);
+    }
+
+    #[test]
+    fn dismissing_the_search_leaves_the_input_untouched() {
+        let mut app = test_app();
+        submit(&mut app, "9-4");
+        type_text(&mut app, "5+");
+        let mut io = Headless::declining();
+        app.dispatch(chord(KeyCode::Char('r'), KeyModifiers::CONTROL), &mut io)
+            .expect("dispatch");
+        assert_eq!(app.input, "5+");
+    }
+
+    #[test]
+    fn searching_an_empty_history_reports_and_opens_nothing() {
+        let mut app = test_app();
+        let mut io = Headless::accepting().picking(0);
+        app.dispatch(chord(KeyCode::Char('r'), KeyModifiers::CONTROL), &mut io)
+            .expect("dispatch");
+        assert_eq!(io.asked, 0, "no picker opens without history");
+        assert_eq!(app.status.as_deref(), Some("no history yet"));
+    }
+
+    #[test]
+    fn a_forced_quit_inside_the_search_quits_the_app() {
+        let mut app = test_app();
+        submit(&mut app, "1");
+        let mut io = Headless::force_quitting();
+        app.dispatch(chord(KeyCode::Char('r'), KeyModifiers::CONTROL), &mut io)
+            .expect("dispatch");
+        assert!(app.quit);
+    }
+
+    // --- Command palette ---
+
+    #[test]
+    fn the_palette_runs_the_chosen_action() {
+        let mut app = test_app();
+        // The catalog lists ToggleAngle before the palette entry, so it keeps
+        // its index once the palette itself is filtered out.
+        let index = Action::all()
+            .filter(|a| *a != Action::OpenPalette)
+            .position(|a| a == Action::ToggleAngle)
+            .expect("angle action is in the catalog");
+        assert_eq!(app.service().settings().angle_mode, AngleMode::Rad);
+        let mut io = Headless::accepting().picking(index);
+        app.dispatch(chord(KeyCode::Char('p'), KeyModifiers::CONTROL), &mut io)
+            .expect("dispatch");
+        assert_eq!(app.service().settings().angle_mode, AngleMode::Deg);
+    }
+
+    #[test]
+    fn a_forced_quit_inside_the_palette_quits_the_app() {
+        let mut app = test_app();
+        let mut io = Headless::force_quitting();
+        app.dispatch(chord(KeyCode::Char('p'), KeyModifiers::CONTROL), &mut io)
+            .expect("dispatch");
+        assert!(app.quit);
     }
 
     // --- History navigation and editing ---

@@ -77,7 +77,7 @@ pub enum Scope {
 
 impl Scope {
     /// Whether this scope is active in `context`.
-    fn is_active_in(self, context: Context) -> bool {
+    pub fn is_active_in(self, context: Context) -> bool {
         match self {
             Scope::Global => true,
             Scope::Input => context == Context::Input,
@@ -118,6 +118,10 @@ pub enum Action {
     ToggleTrim,
     /// Copy the most recent result, at full precision.
     CopyLast,
+    /// Search the history with a fuzzy finder and recall the chosen line.
+    SearchHistory,
+    /// Open the command palette to run any action by name.
+    OpenPalette,
     /// Open the help overlay.
     OpenHelp,
     /// Quit the application.
@@ -250,6 +254,20 @@ const ACTIONS: &[ActionSpec] = &[
         description: "copy result",
         scope: Scope::Global,
         default_keys: &["ctrl+y"],
+    },
+    ActionSpec {
+        action: Action::SearchHistory,
+        config_name: "search_history",
+        description: "search history",
+        scope: Scope::Global,
+        default_keys: &["ctrl+r"],
+    },
+    ActionSpec {
+        action: Action::OpenPalette,
+        config_name: "palette",
+        description: "command palette",
+        scope: Scope::Global,
+        default_keys: &["ctrl+p"],
     },
     ActionSpec {
         action: Action::OpenHelp,

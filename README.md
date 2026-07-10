@@ -108,6 +108,8 @@ because they can never be part of an expression.
 | `F5` | toggle decimal separator (`.` / `,`) |
 | `F6` | toggle trailing-zero trimming |
 | `Ctrl+Y` | copy the last result (plain) |
+| `Ctrl+R` | search the history and recall a line into the input |
+| `Ctrl+P` | open the command palette (run any action by name) |
 | `F12` / `?` | open the help overlay |
 | `q` | quit (outside the input; use `:q` while typing) |
 | `F1` | show / hide the shortcut hints |
@@ -127,6 +129,11 @@ asks. Both save the session on the way out.
 | `↑` / `PgUp` | enter the history (`↑` only from the first wrapped line) |
 | `Esc` | clear the input |
 | `Ctrl+C` / `X` / `V` | copy / cut / paste in the input |
+
+Typing an identifier opens a suggestion dropdown of matching variables, built-in
+functions and constants. `↑` / `↓` pick a suggestion, `Enter` / `Tab` / `→`
+accept it, and `Esc` closes the dropdown. While it is open `↑` steers it rather
+than the history, so use `PgUp` to browse the history from there.
 
 ### Calc – browsing the history (after `↑`)
 

@@ -181,6 +181,8 @@ unit = "#ff79c6"
 # help = ["f12", "?"]
 # quit = "q"
 # copy_result = "ctrl+y"
+# search_history = "ctrl+r"
+# palette = "ctrl+p"
 #
 # # The input field
 # submit = "enter"

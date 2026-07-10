@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Autocomplete in the input field: typing an identifier opens a dropdown of matching variables, built-in functions and constants. `↑`/`↓` pick, `Enter`/`Tab`/`→` accept, `Esc` closes. While it is open `↑` steers it, so `PgUp` browses the history from there.
+- History search on `Ctrl+R`: a fuzzy finder over past inputs that recalls the chosen line into the input, ready to edit or resubmit.
+- Command palette on `Ctrl+P`: run any action by name, filtered fuzzily. Commands unavailable in the current context are shown dimmed. The `[keys]` names and descriptions come from the same action catalog as the footer and help.
 - The colour of the input box's focused frame is now configurable, as
   `border_focus` under `[appearance.colors]` or in a `[themes.<name>]`. Left out
   it follows `border`, and overriding `border` alone drags it along, so the
@@ -41,6 +44,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `[appearance.colors]`.
 - A `state.toml` written before units existed – where a dimensionless variable was a bare number (`g = 9.81`) rather than a table – failed to parse, and the failure was swallowed by starting from an empty session. Upgrading silently discarded the user's settings, variables and history. Both shapes are now read; the table is written.
 - Restoring the persisted theme dropped the configured colour overrides, so on every restart the block cursor turned accent-coloured and the input field turned bright. The overrides are now re-applied whenever the theme changes, at startup and when cycling it at runtime.
+- The `--demo` banner told the user to press `F1` for help, a leftover from the old binding. Help is `F12` or `?`; `F1` toggles the shortcut hints.
 
 ### Removed
 

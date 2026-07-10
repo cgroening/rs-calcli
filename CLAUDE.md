@@ -13,7 +13,8 @@ calcli folgt der `clibase`-Vorlage; Referenzprojekte für Stil und Aufbau:
 
 - `domain/` – reine Kernlogik: `errors` (`AppError`), `evaluator` (Trait +
   `MevalEvaluator`), `units` (rink), `expression`, `format`, `highlight`,
-  `history`, `quantity`, `variables`. Keine I/O.
+  `completion` (Vorschlagsnamen + Wort unter dem Cursor, teilt die Namenslisten
+  mit `highlight`), `history`, `quantity`, `variables`. Keine I/O.
 - `services/` – `calc_service`: Orchestrierung (submit/edit/delete + Recompute,
   Variablen, Settings). Keine I/O. Hier liegt auch der **Fehler-Trichter**:
   `StorageError`/`ConfigError` werden zu `AppError::Storage` (Cause-Chain wird

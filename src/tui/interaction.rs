@@ -13,7 +13,9 @@
 use std::io;
 
 use ratada::quit::QuitKind;
-use ratada::{ModalSignal, Screen, Tui, help, modal, quit};
+use ratada::{
+    ModalSignal, Screen, Tui, command_palette, finder, help, modal, quit,
+};
 use ratatui::Frame;
 
 use crate::tui::App;
@@ -42,6 +44,17 @@ impl Answer {
     }
 }
 
+/// How a fuzzy picker ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Selection {
+    /// The user chose the item at this index into the picker's items.
+    Index(usize),
+    /// The user dismissed the picker without choosing.
+    None,
+    /// The user pressed `Ctrl+Q` inside the picker: quit at once.
+    ForcedQuit,
+}
+
 /// Opens the dialogs the app needs. Every method receives the app so the dialog
 /// can repaint the live view behind itself as a dimmed backdrop.
 pub trait Interaction {
@@ -59,6 +72,30 @@ pub trait Interaction {
     ///
     /// Returns an I/O error when the overlay cannot be drawn.
     fn help(&mut self, app: &App) -> io::Result<Answer>;
+
+    /// Opens a fuzzy picker over `items` titled `title`, returning the chosen
+    /// index into `items`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error when the picker cannot be drawn.
+    fn pick(
+        &mut self,
+        app: &App,
+        title: &str,
+        items: &[String],
+    ) -> io::Result<Selection>;
+
+    /// Opens the command palette over `items`, returning the chosen index.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error when the palette cannot be drawn.
+    fn palette(
+        &mut self,
+        app: &App,
+        items: &[command_palette::CommandItem<'_>],
+    ) -> io::Result<Selection>;
 
     /// Whether a soft quit may proceed, asking first when configured to.
     fn may_quit(&mut self, app: &App) -> bool;
@@ -106,6 +143,43 @@ impl Interaction for Modals<'_> {
         })
     }
 
+    fn pick(
+        &mut self,
+        app: &App,
+        title: &str,
+        items: &[String],
+    ) -> io::Result<Selection> {
+        let signal = finder::finder(self.tui, app.skin(), title, items, |f| {
+            app.render(f);
+        })?;
+        Ok(match signal {
+            ModalSignal::Value(index) => Selection::Index(index),
+            ModalSignal::Cancelled => Selection::None,
+            ModalSignal::Quit => Selection::ForcedQuit,
+        })
+    }
+
+    fn palette(
+        &mut self,
+        app: &App,
+        items: &[command_palette::CommandItem<'_>],
+    ) -> io::Result<Selection> {
+        let signal = command_palette::command_palette(
+            self.tui,
+            app.skin(),
+            " Commands ",
+            items,
+            |f| {
+                app.render(f);
+            },
+        )?;
+        Ok(match signal {
+            ModalSignal::Value(index) => Selection::Index(index),
+            ModalSignal::Cancelled => Selection::None,
+            ModalSignal::Quit => Selection::ForcedQuit,
+        })
+    }
+
     fn may_quit(&mut self, app: &App) -> bool {
         let repaint = |frame: &mut Frame| app.render(frame);
         quit::request(self.tui, QuitKind::Soft, &repaint)
@@ -120,10 +194,13 @@ mod headless {
     use super::*;
 
     /// A terminal-free [`Interaction`] for tests: every dialog returns
-    /// `answer`, and help is a no-op unless `answer` forces a quit.
+    /// `answer`, help is a no-op unless `answer` forces a quit, and a picker
+    /// returns `selection`.
     pub struct Headless {
-        /// What every dialog returns.
+        /// What every confirmation dialog returns.
         pub answer: Answer,
+        /// What a fuzzy picker returns.
+        pub selection: Selection,
         /// How many dialogs were opened.
         pub asked: usize,
     }
@@ -133,6 +210,7 @@ mod headless {
         pub fn accepting() -> Self {
             Headless {
                 answer: Answer::Yes,
+                selection: Selection::None,
                 asked: 0,
             }
         }
@@ -141,6 +219,7 @@ mod headless {
         pub fn declining() -> Self {
             Headless {
                 answer: Answer::No,
+                selection: Selection::None,
                 asked: 0,
             }
         }
@@ -149,8 +228,15 @@ mod headless {
         pub fn force_quitting() -> Self {
             Headless {
                 answer: Answer::ForcedQuit,
+                selection: Selection::ForcedQuit,
                 asked: 0,
             }
+        }
+
+        /// Makes a fuzzy picker choose the item at `index`.
+        pub fn picking(mut self, index: usize) -> Self {
+            self.selection = Selection::Index(index);
+            self
         }
     }
 
@@ -163,6 +249,25 @@ mod headless {
         fn help(&mut self, _app: &App) -> io::Result<Answer> {
             self.asked += 1;
             Ok(self.answer)
+        }
+
+        fn pick(
+            &mut self,
+            _app: &App,
+            _title: &str,
+            _items: &[String],
+        ) -> io::Result<Selection> {
+            self.asked += 1;
+            Ok(self.selection)
+        }
+
+        fn palette(
+            &mut self,
+            _app: &App,
+            _items: &[command_palette::CommandItem<'_>],
+        ) -> io::Result<Selection> {
+            self.asked += 1;
+            Ok(self.selection)
         }
 
         fn may_quit(&mut self, _app: &App) -> bool {

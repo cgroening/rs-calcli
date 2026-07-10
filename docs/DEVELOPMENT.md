@@ -144,6 +144,26 @@ too, and the toolkit reports it as `ModalSignal::Quit`. Dropping that signal
 would trap the user in the dialog, so it is carried back to the app rather than
 folded into "the user said no".
 
+The history finder (`Ctrl+R`) and the command palette (`Ctrl+P`) go through the
+same port: `Interaction::pick` and `Interaction::palette` return a `Selection`
+(`Index`, `None` or `ForcedQuit`), the picker analogue of `Answer`. `Headless`
+returns a configurable `Selection`, so both flows are driven terminal-free in the
+tests. The palette's items are built from the action catalog itself: the label is
+each action's description, the category comes from `bindings::category_of`, and an
+action unavailable in the current context is passed as `enabled: false`, so the
+toolkit dims it and refuses to select it.
+
+## Input completion
+
+The suggestion dropdown under the input field is `ratada::autocomplete`, driven
+from pure helpers in `domain/completion.rs`: `candidates` lists the current
+variables plus the built-in names (the lists shared with the highlighter), and
+`identifier_before` finds the word under the caret to match against and replace.
+Its keys are widget-internal, so they stay out of the keymap; `App::dispatch`
+lets an open dropdown consume `↑`/`↓`/`Enter`/`Esc` before the normal key path,
+and rebuilds it after every edit. `PgUp` still enters the history while the
+dropdown owns `↑`.
+
 ## Colours
 
 Two sections, two key sets, and they are not the same:

@@ -11,17 +11,19 @@ use crate::domain::units;
 use crate::domain::variables::VariableStore;
 
 /// The known built-in function names (mirrors the meval builtins calcli uses).
-const FUNCTIONS: &[&str] = &[
+/// Shared with [`crate::domain::completion`] as the single source of the names
+/// the input field can complete to.
+pub(crate) const FUNCTIONS: &[&str] = &[
     "sqrt", "exp", "ln", "abs", "sin", "cos", "tan", "asin", "acos", "atan",
     "sinh", "cosh", "tanh", "asinh", "acosh", "atanh", "floor", "ceil",
     "round", "signum", "atan2", "max", "min",
 ];
 
 /// The known built-in constant names.
-const CONSTANTS: &[&str] = &["pi", "e"];
+pub(crate) const CONSTANTS: &[&str] = &["pi", "e"];
 
 /// The previous-answer keyword.
-const ANS: &str = "ans";
+pub(crate) const ANS: &str = "ans";
 
 /// What a character belongs to, for highlighting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,12 +85,12 @@ pub fn classify(input: &str, variables: &VariableStore) -> Vec<TokenKind> {
 }
 
 /// Whether `c` can start an identifier.
-fn is_identifier_start(c: char) -> bool {
+pub(crate) fn is_identifier_start(c: char) -> bool {
     c.is_ascii_alphabetic() || c == '_'
 }
 
 /// Whether `c` can continue an identifier.
-fn is_identifier_part(c: char) -> bool {
+pub(crate) fn is_identifier_part(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
 }
 

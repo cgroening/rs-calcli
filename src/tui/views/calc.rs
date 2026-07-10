@@ -16,7 +16,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Margin, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
+use ratatui::widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
 use crate::domain::history::HistoryEntry;
@@ -77,6 +77,9 @@ pub struct CalcView<'a> {
     pub input_styles: &'a [Style],
     /// The per-entry per-character styles for the history inputs.
     pub row_styles: &'a [Vec<Style>],
+    /// The suggestion dropdown lines to float above the input, empty when the
+    /// autocomplete is closed.
+    pub completion: Vec<Line<'static>>,
     /// The caret and selection colours.
     pub caret: CaretColors,
     /// How the history list is spaced and tinted.
@@ -120,7 +123,52 @@ pub fn render(
 
     let mut metrics = render_history(frame, rows[0], skin, view);
     metrics.input_width = render_input(frame, rows[1], skin, view);
+    // The suggestion dropdown floats over the foot of the history, just above
+    // the input box, so it never grows the bordered field itself. It is bound
+    // to the history area, so it never spills over the header above.
+    render_completion(frame, rows[0], skin, &view.completion);
     metrics
+}
+
+/// Floats the suggestion dropdown in a rounded box anchored to the bottom of
+/// the history `area`, right above the input box. Draws nothing when there are
+/// no suggestions or the history cannot hold even a one-line box.
+fn render_completion(
+    frame: &mut Frame,
+    area: Rect,
+    skin: &Skin,
+    lines: &[Line<'static>],
+) {
+    if lines.is_empty() {
+        return;
+    }
+    let content_width =
+        lines.iter().map(|line| line.width()).max().unwrap_or(0) as u16;
+    // Border on both sides plus one cell of horizontal padding each side.
+    let width = (content_width + 4).min(area.width).max(3);
+    let wanted = lines.len() as u16 + 2;
+    let height = wanted.min(area.height);
+    if height < 3 {
+        return;
+    }
+    let box_area = Rect {
+        x: area.x,
+        y: area.y + area.height - height,
+        width,
+        height,
+    };
+    let visible = height as usize - 2;
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(style::border(&skin.palette))
+        .style(style::bg(skin.palette.surface))
+        .padding(Padding::horizontal(1));
+    frame.render_widget(Clear, box_area);
+    frame.render_widget(
+        Paragraph::new(lines[..visible.min(lines.len())].to_vec()).block(block),
+        box_area,
+    );
 }
 
 /// Renders the history list, returning its measurements.
@@ -586,6 +634,7 @@ mod tests {
             cursor: TextCursor::at(0),
             input_styles: &[],
             row_styles: &[],
+            completion: Vec::new(),
             caret: CaretColors {
                 cursor: ratatui::style::Color::Reset,
                 selection: ratatui::style::Color::Reset,

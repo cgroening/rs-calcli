@@ -31,6 +31,7 @@ pub const INPUT_HINT_GROUPS: &[Group] = &[(
         Action::EnterHistory,
         Action::ClearInput,
         Action::CopyLast,
+        Action::SearchHistory,
     ],
 )];
 
@@ -100,6 +101,28 @@ pub const SETTINGS_CHORDS: Group = (
         Action::ToggleTrim,
     ],
 );
+
+/// The palette category for `action`: the label of the first hint group that
+/// lists it, so the command palette groups commands exactly as the footer and
+/// help do. The app-wide chords that live only in the closing `Global` group
+/// fall back to `"General"`.
+pub fn category_of(action: Action) -> &'static str {
+    let tables: [&[Group]; 5] = [
+        INPUT_HINT_GROUPS,
+        EDIT_HINT_GROUPS,
+        HISTORY_HINT_GROUPS,
+        VARIABLES_HINT_GROUPS,
+        SETTINGS_HINT_GROUPS,
+    ];
+    let singles = [VIEW_GROUP, SETTINGS_CHORDS];
+    let groups = tables.iter().flat_map(|table| table.iter());
+    for &(label, actions) in groups.chain(singles.iter()) {
+        if actions.contains(&action) {
+            return label;
+        }
+    }
+    "General"
+}
 
 /// Every view's groups, titled for the help overlay.
 pub const HELP_TABLES: &[(&str, &[Group])] = &[
@@ -215,6 +238,23 @@ mod tests {
             for (label, _) in table {
                 assert!(!label.is_empty());
             }
+        }
+    }
+
+    #[test]
+    fn category_of_reads_the_hint_tables_and_falls_back_to_general() {
+        assert_eq!(category_of(Action::Submit), "Calculate");
+        assert_eq!(category_of(Action::EditEntry), "Actions");
+        assert_eq!(category_of(Action::ViewCalc), "Views");
+        assert_eq!(category_of(Action::CycleNotation), "Settings");
+        // A chord that lives only in the closing Global group.
+        assert_eq!(category_of(Action::OpenHelp), "General");
+    }
+
+    #[test]
+    fn every_action_has_a_palette_category() {
+        for action in Action::all() {
+            assert!(!category_of(action).is_empty());
         }
     }
 }
