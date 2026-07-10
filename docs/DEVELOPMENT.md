@@ -175,16 +175,27 @@ already phrases whole sentences that name the offending unit.
 
 ## On-disk compatibility
 
-Every shape calcli has ever written must keep loading; `tests/legacy_data.rs`
-guards this against verbatim fixtures in `tests/data/`. Two rules:
+`tests/legacy_data.rs` guards the two on-disk files against verbatim fixtures in
+`tests/data/`. New fields are `#[serde(default)]` in both, so an older file
+loads. Beyond that the two files answer to different rules, because they fail
+differently.
 
-- New fields are `#[serde(default)]`, so an older file loads.
-- A shape that has changed is still *read*, even if it is no longer *written*.
-  A dimensionless variable used to be a bare number (`g = 9.81`) and is now a
-  table; `PersistedValue` accepts both and writes the table.
+**`state.toml` must read every shape calcli has ever written.** A shape that has
+changed is still *read*, even if it is no longer *written*: a dimensionless
+variable used to be a bare number (`g = 9.81`) and is now a table, and
+`PersistedValue` accepts both. This is not politeness. `main` treats an
+unreadable `state.toml` as an empty session, so a rejected file silently
+discards the user's settings, variables and whole history.
 
-This matters more than it looks: `main` treats an unreadable `state.toml` as an
-empty session, so a rejected file silently discards the user's whole history.
+**`config.toml` may lose a key.** `RawConfig` carries `deny_unknown_fields`, so
+a key that no longer exists refuses the file, `main` prints the cause chain and
+exits non-zero. Nothing is lost and the message names the offending line, which
+the user deletes. `history_zebra` went this way, and the two
+`a_0_2_config_file_*` tests pin both halves: the old file is rejected *by name*,
+and the same file minus that line still loads with its colours mapped.
+
+Removing a config key is therefore a breaking change to be announced in
+`CHANGELOG.md`, not a silent one to be papered over.
 
 ## Tests
 

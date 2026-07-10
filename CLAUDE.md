@@ -80,11 +80,17 @@ zeichenweise farblich hervor; `ratada::input::InputField` und
 - **Shortcut-Änderungen:** `keymap.rs` anpassen, dann die Tastentabellen in
   `README.md` und den `[keys]`-Block in `examples/config.toml` nachziehen.
   Footer und Hilfe folgen automatisch.
-- **On-Disk-Formate rückwärtskompatibel:** neue Felder `#[serde(default)]`;
-  eine geänderte Form wird weiter *gelesen*, auch wenn sie nicht mehr
-  *geschrieben* wird. `tests/legacy_data.rs` sichert das gegen echte Fixtures.
-  Wichtig, weil `main` eine unlesbare `state.toml` als leere Session behandelt –
-  eine abgelehnte Datei verwirft stillschweigend die ganze Historie.
+- **On-Disk-Formate rückwärtskompatibel:** neue Felder `#[serde(default)]`.
+  `tests/legacy_data.rs` sichert beide Dateien gegen echte Fixtures. Sie
+  scheitern unterschiedlich, also gelten unterschiedliche Regeln:
+  - `state.toml` muss **jede je geschriebene Form** weiter *lesen*, auch wenn
+    sie nicht mehr *geschrieben* wird. `main` behandelt eine unlesbare
+    `state.toml` als leere Session – eine abgelehnte Datei verwirft
+    stillschweigend Einstellungen, Variablen und die ganze Historie.
+  - `config.toml` **darf einen Schlüssel verlieren**: `deny_unknown_fields`
+    lehnt die Datei ab, `main` druckt die Cause-Chain und bricht ab. Nichts geht
+    verloren, die Meldung nennt die Zeile. Das ist eine nutzersichtbare,
+    brechende Änderung und gehört in den `CHANGELOG.md` – kein Refactoring.
 
 ## TUI-Konventionen (Style Guide §8.10)
 

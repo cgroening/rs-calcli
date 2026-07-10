@@ -7,8 +7,10 @@
 # Merging is per key, not per section: setting one colour leaves the rest alone.
 #
 # A config.toml written for calcli 0.2 (a flat `[theme]` table and a top-level
-# `glyphs`) still loads unchanged; its colours are mapped onto the sections
-# below. The 0.2 shape is deprecated but supported.
+# `glyphs`) still loads; its colours are mapped onto the sections below. The 0.2
+# shape is deprecated but supported, with one exception: `history_zebra` was
+# removed, and an unknown key is an error rather than a shrug. Delete that one
+# line and the rest of the file loads as it always did.
 
 
 ## Calculation and display ####################################################
@@ -57,14 +59,12 @@ confirm_quit = false
 
 ## The history list ###########################################################
 
-# Tint every second history entry (zebra striping). The stripe takes the `panel`
-# colour, so a theme whose `panel` equals its `surface` makes it invisible.
-history_zebra = false
-
 # Blank lines inserted after each history entry's result.
 history_spacing = 1
 
 # Draw a separator line in the gap between history entries (needs spacing >= 1).
+# These rules replaced the alternating background tint of calcli 0.2; a leftover
+# `history_zebra` key in this file is now a startup error, so delete the line.
 history_separator = true
 
 # Max height (in text lines) the input field grows to as a long expression wraps.

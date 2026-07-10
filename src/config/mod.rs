@@ -40,9 +40,8 @@ const CALCLI_COLORS: ThemeColors = ThemeColors {
     background: Color::Default,
     header: Color::hex("#0e0c12"),
     footer: Color::hex("#0e0c12"),
-    // A step above `surface`, because that is what tints every second history
-    // entry when `history_zebra` is on. Equal to `surface` the stripe would be
-    // painted in the colour of its own background and do nothing.
+    // A step above `surface`, the raised plane a toolkit widget lifts onto.
+    // calcli draws no such widget today, so nothing on screen wears it yet.
     panel: Color::hex("#1b1926"),
     surface: Color::hex("#16141d"),
     border: Color::hex("#3e3e3e"),
@@ -78,8 +77,6 @@ pub struct Config {
     pub restore_last_settings: bool,
     /// Whether the input field shows a live result preview / validity warning.
     pub live_feedback: bool,
-    /// Whether history entries alternate a background tint (zebra striping).
-    pub history_zebra: bool,
     /// Blank lines inserted after each history entry's result.
     pub history_spacing: usize,
     /// Whether a separator line is drawn in the gap between history entries.
@@ -114,7 +111,6 @@ impl Default for Config {
             max_history: DEFAULT_MAX_HISTORY,
             restore_last_settings: true,
             live_feedback: true,
-            history_zebra: false,
             history_spacing: 1,
             history_separator: true,
             input_max_lines: 5,
@@ -229,22 +225,6 @@ mod tests {
     /// The input fills are hand-tuned rather than derived, so these pin the
     /// relationships that make the field readable, not the exact hex values.
     /// Retuning a colour should not break a test; inverting the design should.
-    /// The zebra stripe of every second history entry is tinted with `panel`.
-    /// A `panel` equal to `surface` paints the row in the colour of its own
-    /// background, so `history_zebra = true` does nothing at all.
-    #[test]
-    fn the_panel_tint_is_visible_against_the_content_surface() {
-        let palette = Config::default().palette();
-        assert_ne!(
-            palette.panel, palette.surface,
-            "history_zebra would tint a row in the surface colour",
-        );
-        // Raised, as the name says ...
-        assert!(palette.panel.luminance() > palette.surface.luminance());
-        // ... but far below the selected row, which must still stand out.
-        assert!(palette.panel.luminance() < palette.selection.luminance());
-    }
-
     #[test]
     fn the_input_field_recedes_at_rest_and_lifts_when_focused() {
         let palette = Config::default().palette();

@@ -50,7 +50,6 @@ struct RawConfig {
     max_history: Option<usize>,
     restore_last_settings: Option<bool>,
     live_feedback: Option<bool>,
-    history_zebra: Option<bool>,
     history_spacing: Option<usize>,
     history_separator: Option<bool>,
     input_max_lines: Option<usize>,
@@ -110,6 +109,10 @@ struct RawLegacyTheme {
     comment_color: Option<String>,
     unit_color: Option<String>,
     settings_bar_bg: Option<String>,
+    /// Tinted every second history entry, a feature that no longer exists.
+    /// Read by nothing, but still named here: `deny_unknown_fields` would
+    /// otherwise reject every 0.2 config that sets it.
+    #[allow(dead_code, reason = "accepted for compatibility, without effect")]
     history_alt_bg: Option<String>,
     history_separator_color: Option<String>,
 }
@@ -211,7 +214,6 @@ fn merge(raw: RawConfig) -> Config {
             .restore_last_settings
             .unwrap_or(defaults.restore_last_settings),
         live_feedback: raw.live_feedback.unwrap_or(defaults.live_feedback),
-        history_zebra: raw.history_zebra.unwrap_or(defaults.history_zebra),
         history_spacing: raw
             .history_spacing
             .unwrap_or(defaults.history_spacing),
@@ -269,13 +271,16 @@ fn merge_appearance(
 }
 
 /// The legacy `[theme]` colours that map onto a palette colour.
+///
+/// `history_alt_bg` is absent on purpose: it tinted the zebra stripe, which no
+/// longer exists. Mapping it onto `panel` would point it at a colour calcli
+/// never draws, which reads as support for something that is gone.
 fn legacy_chrome_colors(
     legacy: &RawLegacyTheme,
 ) -> impl Iterator<Item = (&'static str, String)> + '_ {
     [
         ("accent", &legacy.accent_color),
         ("footer", &legacy.settings_bar_bg),
-        ("panel", &legacy.history_alt_bg),
         ("border", &legacy.history_separator_color),
     ]
     .into_iter()
@@ -431,6 +436,30 @@ mod tests {
     const LEGACY_CONFIG: &str =
         include_str!("../../tests/data/config-0.2.toml");
 
+    /// The example config we ship today.
+    const EXAMPLE_CONFIG: &str = include_str!("../../examples/config.toml");
+
+    /// The example is documentation, and documentation that no longer parses is
+    /// worse than none: it hands the user a file that stops calcli from
+    /// starting. Removing a key from `RawConfig` has to reach this file too.
+    #[test]
+    fn the_shipped_example_config_parses_and_states_the_defaults() {
+        let config = config_from_str(EXAMPLE_CONFIG)
+            .expect("examples/config.toml must parse");
+        let defaults = Config::default();
+
+        assert_eq!(config.notation, defaults.notation);
+        assert_eq!(config.decimals, defaults.decimals);
+        assert_eq!(config.angle_mode, defaults.angle_mode);
+        assert_eq!(config.max_history, defaults.max_history);
+        assert_eq!(config.history_spacing, defaults.history_spacing);
+        assert_eq!(config.history_separator, defaults.history_separator);
+        assert_eq!(config.input_max_lines, defaults.input_max_lines);
+        assert_eq!(config.confirm_delete, defaults.confirm_delete);
+        assert_eq!(config.confirm_quit, defaults.confirm_quit);
+        assert_eq!(config.highlight, defaults.highlight);
+    }
+
     #[test]
     fn empty_raw_config_yields_defaults() {
         let config = merge(RawConfig::default());
@@ -475,9 +504,36 @@ mod tests {
         assert_eq!(config.angle_mode, AngleMode::Deg);
     }
 
+    /// The 0.2 config minus the one key that no longer exists.
+    fn legacy_config_without_zebra() -> String {
+        LEGACY_CONFIG.replace("history_zebra = false\n", "")
+    }
+
+    /// Dropping `history_zebra` is a breaking change, and deliberately a loud
+    /// one: `deny_unknown_fields` refuses the file rather than ignore the key,
+    /// so the user is told to delete a line instead of wondering why nothing
+    /// changed. `config.toml` may do this; `state.toml` may not, because an
+    /// unreadable state file is silently treated as an empty session.
+    ///
+    /// The key is named by the TOML error, which `ConfigError::Parse` carries
+    /// as its source. `main` prints the whole chain (`{error:#}`), so this is
+    /// what the user reads.
+    #[test]
+    fn a_0_2_config_file_is_rejected_by_name_for_its_zebra_key() {
+        let error = config_from_str(LEGACY_CONFIG)
+            .expect_err("history_zebra is gone, so the 0.2 file is refused");
+        let cause = std::error::Error::source(&error)
+            .expect("a parse failure carries the TOML error")
+            .to_string();
+        assert!(
+            cause.contains("history_zebra"),
+            "the message must name the offending key: {cause}",
+        );
+    }
+
     #[test]
     fn a_legacy_0_2_config_file_still_loads() {
-        let config = config_from_str(LEGACY_CONFIG)
+        let config = config_from_str(&legacy_config_without_zebra())
             .expect("the 0.2 config shape must keep loading");
 
         // Plain scalars survive untouched.
@@ -490,11 +546,20 @@ mod tests {
         assert_eq!(config.palette().accent, Color::hex("#6dd0ff"));
         // The legacy chrome colours land on their palette counterparts.
         assert_eq!(config.palette().footer, Color::hex("#252525"));
-        assert_eq!(config.palette().panel, Color::hex("#1a1a1a"));
         assert_eq!(config.palette().border, Color::hex("#3e3e3e"));
         // The legacy token colours land in [highlight].
         assert_eq!(config.highlight.function, Color::hex("#78c2b3"));
         assert_eq!(config.highlight.unit, Color::hex("#ff79c6"));
+    }
+
+    /// `history_alt_bg` tinted the zebra stripe. The key is still accepted, but
+    /// it no longer reaches `panel`: pointing it at a colour calcli never draws
+    /// would look like support for a feature that is gone.
+    #[test]
+    fn the_legacy_zebra_colour_no_longer_reaches_the_palette() {
+        let legacy = config_from_str(&legacy_config_without_zebra())
+            .expect("the 0.2 config shape must keep loading");
+        assert_eq!(legacy.palette().panel, Config::default().palette().panel);
     }
 
     #[test]

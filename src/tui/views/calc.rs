@@ -59,8 +59,6 @@ pub struct HistoryStyle {
     pub spacing: usize,
     /// Colour of the separator rule in the gap, or `None` when disabled.
     pub separator: Option<Color>,
-    /// Background tint of every second entry, or `None` when zebra is off.
-    pub zebra: Option<Color>,
 }
 
 /// Everything the calc view renders from.
@@ -364,17 +362,14 @@ fn fill_row(
     styled_row(Line::from(spans), bg)
 }
 
-/// The background tint for entry `index`: focus while editing, selection when
-/// selected, else the zebra stripe on every second entry.
+/// The background tint for entry `index`: the focused fill while it is being
+/// edited, the selection tint while it is selected, and nothing otherwise.
 fn row_bg(view: &CalcView<'_>, skin: &Skin, index: usize) -> Option<Color> {
     if view.mode == Mode::Edit(index) {
         return Some(to_ratatui(skin.palette.input_bg_active));
     }
     if view.selected == Some(index) {
         return Some(to_ratatui(skin.palette.selection));
-    }
-    if index % 2 == 1 {
-        return view.style.zebra;
     }
     None
 }
@@ -582,7 +577,7 @@ mod tests {
     use crate::config::Config;
 
     /// A view carrying nothing but what `row_bg` reads.
-    fn zebra_view(zebra: Option<ratatui::style::Color>) -> CalcView<'static> {
+    fn row_view() -> CalcView<'static> {
         CalcView {
             rows: &[],
             selected: None,
@@ -598,7 +593,6 @@ mod tests {
             style: HistoryStyle {
                 spacing: 1,
                 separator: None,
-                zebra,
             },
             accent_color: ratatui::style::Color::Reset,
             error_color: ratatui::style::Color::Reset,
@@ -627,50 +621,30 @@ mod tests {
         (luminance(border) - luminance(input_fill(&skin, mode))).abs()
     }
 
-    /// Every second history entry gets the `panel` tint. If that colour equals
-    /// the surface it sits on, `history_zebra = true` is a no-op.
+    /// Only the row the user is on carries a tint; the separator rules do the
+    /// work of telling the other entries apart.
     #[test]
-    fn zebra_striping_tints_every_second_row_visibly() {
+    fn a_history_row_is_tinted_only_while_selected_or_edited() {
         let skin = skin();
-        let zebra = Some(to_ratatui(skin.palette.panel));
-        let view = zebra_view(zebra);
 
-        assert_eq!(row_bg(&view, &skin, 0), None, "the first row is untinted");
-        let striped =
-            row_bg(&view, &skin, 1).expect("the second row is tinted");
-        assert_ne!(
-            striped,
-            to_ratatui(skin.palette.surface),
-            "the stripe is invisible against its own background",
-        );
-    }
+        let mut view = row_view();
+        assert_eq!(row_bg(&view, &skin, 0), None, "at rest nothing is tinted");
+        assert_eq!(row_bg(&view, &skin, 1), None);
 
-    #[test]
-    fn zebra_striping_yields_to_the_selection_and_the_editor() {
-        let skin = skin();
-        let zebra = Some(to_ratatui(skin.palette.panel));
-
-        let mut view = zebra_view(zebra);
         view.selected = Some(1);
+        assert_eq!(row_bg(&view, &skin, 0), None, "only the selected row");
         assert_eq!(
             row_bg(&view, &skin, 1),
             Some(to_ratatui(skin.palette.selection)),
         );
 
-        let mut view = zebra_view(zebra);
+        let mut view = row_view();
         view.mode = Mode::Edit(1);
         assert_eq!(
             row_bg(&view, &skin, 1),
             Some(to_ratatui(skin.palette.input_bg_active)),
+            "the row being edited wears the focused input fill",
         );
-    }
-
-    #[test]
-    fn zebra_off_leaves_every_row_untinted() {
-        let skin = skin();
-        let view = zebra_view(None);
-        assert_eq!(row_bg(&view, &skin, 0), None);
-        assert_eq!(row_bg(&view, &skin, 1), None);
     }
 
     #[test]

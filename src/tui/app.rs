@@ -99,9 +99,6 @@ impl App {
                 separator: config
                     .history_separator
                     .then(|| to_ratatui(config.palette().border)),
-                zebra: config
-                    .history_zebra
-                    .then(|| to_ratatui(config.palette().panel)),
             },
             input_max_lines: config.input_max_lines,
             live_feedback: config.live_feedback,
@@ -447,7 +444,6 @@ impl App {
             style: HistoryStyle {
                 spacing: self.history.spacing,
                 separator: self.history.separator,
-                zebra: self.history.zebra,
             },
             accent_color: to_ratatui(self.skin.palette.accent),
             error_color: to_ratatui(self.skin.palette.error),

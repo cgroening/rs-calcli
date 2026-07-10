@@ -38,10 +38,34 @@ fn load_fixture(name: &str, tag: &str) -> PersistedState {
     state
 }
 
+/// The verbatim 0.2 `config.toml`.
+const LEGACY_CONFIG: &str = include_str!("data/config-0.2.toml");
+
+/// `history_zebra` was removed, and `deny_unknown_fields` turns that into a
+/// startup error rather than a shrug. That is the one shape a `config.toml` is
+/// allowed to lose: the user reads the message and deletes a line. A
+/// `state.toml` may never break this way, because `main` treats an unreadable
+/// one as an empty session and the whole history goes with it.
+///
+/// `main` prints the cause chain (`{error:#}`), so the TOML error naming the
+/// key is what reaches the terminal.
+#[test]
+fn a_0_2_config_file_is_rejected_by_name_for_its_zebra_key() {
+    let error = config_from_str(LEGACY_CONFIG)
+        .expect_err("history_zebra no longer exists");
+    let cause = std::error::Error::source(&error)
+        .expect("a parse failure carries the TOML error")
+        .to_string();
+    assert!(
+        cause.contains("history_zebra"),
+        "the message must name the offending key: {cause}",
+    );
+}
+
 #[test]
 fn a_0_2_config_file_still_loads_with_its_colours_mapped() {
-    let text = include_str!("data/config-0.2.toml");
-    let config = config_from_str(text).expect("the 0.2 config must load");
+    let text = LEGACY_CONFIG.replace("history_zebra = false\n", "");
+    let config = config_from_str(&text).expect("the 0.2 config must load");
 
     assert_eq!(config.decimals, 3);
     assert_eq!(config.max_history, 500);
@@ -49,11 +73,13 @@ fn a_0_2_config_file_still_loads_with_its_colours_mapped() {
     assert!(config.live_feedback);
 
     // The flat `[theme]` colours land on the palette and on `[highlight]`.
+    // `history_alt_bg` is not among them: it tinted the zebra stripe, and the
+    // key is now accepted without effect rather than aimed at an unused colour.
     let palette = config.palette();
     assert_eq!(palette.accent, Color::hex("#6dd0ff"));
     assert_eq!(palette.footer, Color::hex("#252525"));
-    assert_eq!(palette.panel, Color::hex("#1a1a1a"));
     assert_eq!(palette.border, Color::hex("#3e3e3e"));
+    assert_eq!(palette.panel, Config::default().palette().panel);
     assert_eq!(config.highlight.function, Color::hex("#78c2b3"));
     assert_eq!(config.highlight.unit, Color::hex("#ff79c6"));
 }
