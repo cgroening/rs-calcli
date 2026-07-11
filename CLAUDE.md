@@ -1,157 +1,156 @@
-# calcli – Projektregeln für Claude Code
+# calcli – project rules for Claude Code
 
-`calcli` ist ein schneller Terminal-Taschenrechner (Ratatui-TUI) mit Verlauf,
-Zwischenspeicher (Variablen) und Ingenieur-Funktionen. Zielnutzer: Entwickler,
-Ingenieure. Sprache des Codes durchgehend **Englisch** (Bezeichner, Kommentare,
-sichtbare Texte).
+`calcli` is a fast terminal calculator (Ratatui TUI) with history,
+scratch storage (variables) and engineering functions. Target users: developers,
+engineers. Code language throughout **English** (identifiers, comments,
+visible text).
 
-## Architektur
+## Architecture
 
-Schichtentrennung mit Composition Root in `main.rs`, DI über Traits (DIP).
-calcli folgt der `clibase`-Vorlage; Referenzprojekte für Stil und Aufbau:
+Layer separation with the composition root in `main.rs`, DI via traits (DIP).
+calcli follows the `clibase` template; reference projects for style and structure:
 `clibase`, `mdtask`, `numcli`, `hop`.
 
-- `domain/` – reine Kernlogik: `errors` (`AppError`), `evaluator` (Trait +
+- `domain/` – pure core logic: `errors` (`AppError`), `evaluator` (trait +
   `MevalEvaluator`), `units` (rink), `expression`, `format`, `highlight`,
-  `completion` (Vorschlagsnamen + Wort unter dem Cursor, teilt die Namenslisten
-  mit `highlight`), `history`, `quantity`, `variables`. Keine I/O.
-- `services/` – `calc_service`: Orchestrierung (submit/edit/delete + Recompute,
-  Variablen, Settings). Keine I/O. Hier liegt auch der **Fehler-Trichter**:
-  `StorageError`/`ConfigError` werden zu `AppError::Storage` (Cause-Chain wird
-  in die Meldung geflacht).
-- `storage/` – `StateRepository`-Trait + TOML-Implementierung (`state.toml`,
-  atomar geschrieben) + `errors` (`StorageError`, verlässt die Schicht nie).
-- `config/` – `Config` (+ Defaults), `appearance`, `highlight`, `loader`
-  (Default → TOML → env `CALCLI_*`), inkl. Kompatibilitäts-Shim für 0.2.
-- `keymap.rs` – Action-Katalog: **SSOT** für Tasten-Dispatch, Footer-Hints,
-  Hilfe-Overlay und die `[keys]`-Namen der Config.
-- `tui/` – Ratatui-Oberfläche: `appframe` (gemeinsamer App-Rahmen), `app`
-  (`ratada::Screen`), `bindings`, `interaction` (Port für blockierende Dialoge),
+  `completion` (suggestion names + word under the cursor, shares the name lists
+  with `highlight`), `history`, `quantity`, `variables`. No I/O.
+- `services/` – `calc_service`: orchestration (submit/edit/delete + recompute,
+  variables, settings). No I/O. The **error funnel** also lives here:
+  `StorageError`/`ConfigError` are turned into `AppError::Storage` (the cause chain
+  is flattened into the message).
+- `storage/` – `StateRepository` trait + TOML implementation (`state.toml`,
+  written atomically) + `errors` (`StorageError`, never leaves the layer).
+- `config/` – `Config` (+ defaults), `appearance`, `highlight`, `loader`
+  (default → TOML → env `CALCLI_*`), incl. compatibility shim for 0.2.
+- `keymap.rs` – action catalog: **SSOT** for key dispatch, footer hints,
+  help overlay and the `[keys]` names in the config.
+- `tui/` – Ratatui surface: `appframe` (shared app frame), `app`
+  (`ratada::Screen`), `bindings`, `interaction` (port for blocking dialogs),
   `colors`, `text_edit`, `views/{calc,variables,settings}`.
-- `util/` – `fs` (atomare Writes), `paths`, `logging`.
+- `util/` – `fs` (atomic writes), `paths`, `logging`.
 
-Die Berechnungs-Engine liegt hinter dem `Evaluator`-Trait; Einheiten laufen über
+The computation engine sits behind the `Evaluator` trait; units run through
 `domain::units` (rink-core).
 
 ## Toolkit: `ratada`
 
-Widgets, Theming, Modals, Hilfe-Overlay, Terminal-Guard, Event-Loop, Shortcut-
-Hints, Quit-Logik und Zwischenablage kommen aus `ratada` (Pfad-Dependency).
-`crate::theme` ist ein Re-Export von `ratada::theme`. **Kein Widget nachbauen,
-das es dort schon gibt** – fehlt eines, die Lib erweitern (vorher abstimmen),
-keine App-lokale Kopie.
+Widgets, theming, modals, help overlay, terminal guard, event loop, shortcut
+hints, quit logic and clipboard come from `ratada` (path dependency).
+`crate::theme` is a re-export of `ratada::theme`. **Do not rebuild a widget
+that already exists there** – if one is missing, extend the lib (agree on it
+beforehand), no app-local copy.
 
-Einzige bewusste Ausnahme: `tui/text_edit.rs`. calcli hebt seine Eingabe
-zeichenweise farblich hervor; `ratada::input::InputField` und
-`ratada::textarea::TextArea` rendern nur schmucklosen Text.
+The only deliberate exception: `tui/text_edit.rs`. calcli highlights its input
+character by character with color; `ratada::input::InputField` and
+`ratada::textarea::TextArea` render only plain text.
 
-## Verbindliche Regeln (aus dem Style Guide, Rust §8)
+## Mandatory rules (from the Style Guide, Rust §8)
 
-- **Edition 2024**, MSRV 1.88 (`ratada` nutzt let-chains); `rustfmt` (Default +
+- **Edition 2024**, MSRV 1.88 (`ratada` uses let-chains); `rustfmt` (default +
   `group_imports=StdExternalCrate`, `imports_granularity=Module`);
-  `cargo clippy --all-targets -- -D warnings` muss sauber sein.
-- **Fehlerbehandlung:** `Result<T, E>` + `?`. `thiserror` für Domänenfehler
-  (ein Error-Typ pro Domäne), `anyhow` nur am Binary-Rand (`main`). **Kein
-  `unwrap()`**; `expect()` nur an beweisbar unfehlbaren Stellen (mit Begründung).
-  Kein `panic!` im Normalfluss. Eingabefehler → Statuszeile, nie Crash.
-- **Typen:** `enum`s statt magischer Strings, `struct`s statt loser Tupel.
-  Sinnvolle `derive`s; `Option<T>` statt Sentinel-Werten.
-- **Funktionen:** klein (SRP), eine Abstraktionsebene (SLAP), max. zwei
-  Verschachtelungen mit frühem Return, ≤ 3 Parameter (sonst in Struct bündeln),
-  keine Flag-Argumente. Reine Funktionen bevorzugen.
-- **Namen:** Prädikate `is_`/`has_`/`can_`; Methoden = Verben, Typen =
-  Substantive; keine `Manager`/`Helper`/`Data`.
-- **Doku:** `///` über jedem öffentlichen Item (erste Zeile = Ein-Satz-
-  Zusammenfassung, Prosa statt `# Arguments`-Listen); `//!` Modul-Doc oben.
-- **Zeilenlänge ≤ 80** in `.rs`; 4 Spaces; Trailing Commas in mehrzeiligen
-  Listen; LF; Datei endet mit genau einem Newline.
-- **Gedankenstrich:** niemals den Geviertstrich (em dash) verwenden. In
-  Code-Dateien `-` (Bindestrich), in `.md`-Dateien `–` (en dash).
-- **Logging** über `log` (Datei-Sink in `util/logging`), nie `println!`/
-  `eprintln!` für Diagnose. Sichtbare TUI-Ausgabe ist kein Logging.
-- **Tests** werden immer mitgeliefert (`#[cfg(test)] mod tests` je Datei,
-  Integrationstests in `tests/`); Testnamen beschreiben das erwartete Verhalten;
-  Fakes vor Mocks. **Nach jeder Änderung `cargo test` laufen lassen.**
-- **Dependencies** minimieren; neue Crates vorher abstimmen. Etablierte Crates
-  mit `// https://crates.io/crates/<name>` über dem `use` dokumentieren.
-- **Changelog pflegen:** Jede nutzersichtbare Änderung in `CHANGELOG.md` (Format
-  "Keep a Changelog") unter `## [Unreleased]` eintragen; bei einem Release den
-  Abschnitt versionieren/datieren und die `version` in `Cargo.toml` nach SemVer
-  anheben.
-- **Shortcut-Änderungen:** `keymap.rs` anpassen, dann die Tastentabellen in
-  `README.md` und den `[keys]`-Block in `examples/config.toml` nachziehen.
-  Footer und Hilfe folgen automatisch.
-- **On-Disk-Formate rückwärtskompatibel:** neue Felder `#[serde(default)]`.
-  `tests/legacy_data.rs` sichert beide Dateien gegen echte Fixtures. Sie
-  scheitern unterschiedlich, also gelten unterschiedliche Regeln:
-  - `state.toml` muss **jede je geschriebene Form** weiter *lesen*, auch wenn
-    sie nicht mehr *geschrieben* wird. `main` behandelt eine unlesbare
-    `state.toml` als leere Session – eine abgelehnte Datei verwirft
-    stillschweigend Einstellungen, Variablen und die ganze Historie.
-  - `config.toml` **darf einen Schlüssel verlieren**: `deny_unknown_fields`
-    lehnt die Datei ab, `main` druckt die Cause-Chain und bricht ab. Nichts geht
-    verloren, die Meldung nennt die Zeile. Das ist eine nutzersichtbare,
-    brechende Änderung und gehört in den `CHANGELOG.md` – kein Refactoring.
+  `cargo clippy --all-targets -- -D warnings` must be clean.
+- **Error handling:** `Result<T, E>` + `?`. `thiserror` for domain errors
+  (one error type per domain), `anyhow` only at the binary edge (`main`). **No
+  `unwrap()`**; `expect()` only in provably infallible places (with a rationale).
+  No `panic!` in the normal flow. Input errors → status line, never a crash.
+- **Types:** `enum`s instead of magic strings, `struct`s instead of loose tuples.
+  Sensible `derive`s; `Option<T>` instead of sentinel values.
+- **Functions:** small (SRP), one level of abstraction (SLAP), at most two
+  levels of nesting with early return, ≤ 3 parameters (otherwise bundle in a struct),
+  no flag arguments. Prefer pure functions.
+- **Names:** predicates `is_`/`has_`/`can_`; methods = verbs, types =
+  nouns; no `Manager`/`Helper`/`Data`.
+- **Docs:** `///` above every public item (first line = one-sentence
+  summary, prose instead of `# Arguments` lists); `//!` module doc at the top.
+- **Line length ≤ 80** in `.rs`; 4 spaces; trailing commas in multi-line
+  lists; LF; file ends with exactly one newline.
+- **Dash:** never use the em dash. In
+  code files `-` (hyphen), in `.md` files `–` (en dash).
+- **Logging** via `log` (file sink in `util/logging`), never `println!`/
+  `eprintln!` for diagnostics. Visible TUI output is not logging.
+- **Tests** are always shipped along (`#[cfg(test)] mod tests` per file,
+  integration tests in `tests/`); test names describe the expected behavior;
+  fakes over mocks. **Run `cargo test` after every change.**
+- **Minimize dependencies**; agree on new crates beforehand. Document established crates
+  with `// https://crates.io/crates/<name>` above the `use`.
+- **Maintain the changelog:** enter every user-visible change in `CHANGELOG.md` (format
+  "Keep a Changelog") under `## [Unreleased]`; on a release, version/date the
+  section and bump the `version` in `Cargo.toml` per SemVer.
+- **Shortcut changes:** adjust `keymap.rs`, then update the key tables in
+  `README.md` and the `[keys]` block in `examples/config.toml` accordingly.
+  Footer and help follow automatically.
+- **On-disk formats backward compatible:** new fields `#[serde(default)]`.
+  `tests/legacy_data.rs` guards both files against real fixtures. They
+  fail differently, so different rules apply:
+  - `state.toml` must keep *reading* **every form ever written**, even if
+    it is no longer *written*. `main` treats an unreadable
+    `state.toml` as an empty session – a rejected file silently discards
+    settings, variables and the entire history.
+  - `config.toml` **may lose a key**: `deny_unknown_fields`
+    rejects the file, `main` prints the cause chain and aborts. Nothing is
+    lost, the message names the line. This is a user-visible,
+    breaking change and belongs in the `CHANGELOG.md` – not a refactoring.
 
-## TUI-Konventionen (Style Guide §8.10)
+## TUI conventions (Style Guide §8.10)
 
-Panel-Layout aus `clibase`: getöntes Header-Panel mit **nur** Brand + Tab-Bar,
-erhabene Content-Fläche, getöntes Status-Band (links die aktiven Settings,
-rechts die transiente Statusmeldung), darunter eine Leerzeile und die
-hintergrundlosen Shortcut-Hints. Der App-Rahmen zeichnet **keine** Rahmenlinien;
-`BorderType::Rounded` gilt nur für einzelne Widgets (Eingabefeld, Modals).
-Alles wird über `tui::appframe::render_frame` gezeichnet (SSOT).
+Panel layout from `clibase`: tinted header panel with **only** brand + tab bar,
+raised content area, tinted status band (the active settings on the left,
+the transient status message on the right), below it a blank line and the
+background-less shortcut hints. The app frame draws **no** border lines;
+`BorderType::Rounded` applies only to individual widgets (input field, modals).
+Everything is drawn via `tui::appframe::render_frame` (SSOT).
 
-- **Footer-Hints** über `ratada::shortcut_hints`, pro Ansicht in benannte
-  `HintGroup`s gruppiert. Die **letzte Gruppe heißt `Global`** und stammt aus
-  `App::global_group` – derselbe Helfer speist Footer *und* Hilfe-Overlay.
-- **Hint-Bandhöhe nie als Konstante:** `shortcut_hints::height(...)`, zusätzlich
-  gedeckelt, damit der Content `MIN_CONTENT_HEIGHT` Zeilen behält.
-- **`Ctrl+Q` nirgends hartkodieren** – weder im Footer noch in der Hilfe noch
-  als `[keys]`-Bindung. Es gehört dem Toolkit, ebenso `F1` (Hints umschalten).
-- **Modals blockieren** (`ratada::modal`) und dimmen die *lebende* Ansicht.
-  Ein `Ctrl+Q` im Modal beendet die App (`Answer::ForcedQuit`).
-- **`Ctrl+C` bleibt die Zwischenablage** und wird nie als Quit belegt.
-- Transiente Statuszeile (Fehler crashen nie), `…`-Truncation, Scrollbar bei
-  Überlauf, zyklische Listennavigation, Glyphen Unicode/ASCII per Config.
+- **Footer hints** via `ratada::shortcut_hints`, grouped per view into named
+  `HintGroup`s. The **last group is called `Global`** and comes from
+  `App::global_group` – the same helper feeds the footer *and* the help overlay.
+- **Hint band height never as a constant:** `shortcut_hints::height(...)`, additionally
+  capped so the content keeps `MIN_CONTENT_HEIGHT` lines.
+- **Never hardcode `Ctrl+Q` anywhere** – neither in the footer nor in the help nor
+  as a `[keys]` binding. It belongs to the toolkit, as does `F1` (toggle hints).
+- **Modals block** (`ratada::modal`) and dim the *live* view.
+  A `Ctrl+Q` in a modal quits the app (`Answer::ForcedQuit`).
+- **`Ctrl+C` stays the clipboard** and is never assigned as quit.
+- Transient status line (errors never crash), `…` truncation, scrollbar on
+  overflow, cyclic list navigation, Unicode/ASCII glyphs per config.
 
-## Modale Tasten: Scopes
+## Modal keys: scopes
 
-calcli ist modal (`Enter` heißt in jedem Kontext etwas anderes). Deshalb trägt
-jede `Action` in `keymap.rs` einen `Scope`; ein Chord wird nur in den Scopes
-aufgelöst, die im aktuellen `Context` aktiv sind. Zwei Bindungen kollidieren nur,
-wenn ihre Scopes gleichzeitig aktiv sein können.
+calcli is modal (`Enter` means something different in every context). That is why
+every `Action` in `keymap.rs` carries a `Scope`; a chord is resolved only in the scopes
+that are active in the current `Context`. Two bindings collide only
+when their scopes can be active at the same time.
 
-Ein **nacktes druckbares Zeichen löst nie eine Action aus**, solange ein
-Textfeld die Tastatur hat – nur so bleiben `q`, `?`, `y`, `d` tippbar. Aus
-demselben Grund sind die Tab-Tasten `Alt+1..3` statt blanker Ziffern.
+A **bare printable character never triggers an action** as long as a
+text field has the keyboard – only that way do `q`, `?`, `y`, `d` stay typable. For
+the same reason the tab keys are `Alt+1..3` instead of bare digits.
 
-## Domänenspezifika
+## Domain specifics
 
-- **Präzision:** intern immer der volle `f64`; Rundung nur in der Anzeige
-  (`format`). Verlauf speichert Eingabe-Strings + berechnete `f64`-Werte.
-- **`ans`** einer Verlaufszeile = Wert der vorhergehenden Zeile. Editieren/
-  Löschen rechnet alle Zeilen darunter neu (`recompute`).
-- **Trennzeichen:** Eingabe tolerant (Leerzeichen, `_`, sowie das jeweils
-  andere von `.`/`,` als Tausendertrenner); Anzeige nutzt die konfigurierten
-  Trenner. `y` kopiert den reinen Wert (volle Präzision, ohne Tausendertrenner),
-  `Y` kopiert wie angezeigt (gerundet, mit Trennern, später Einheit).
-- **Dialoge über den `Interaction`-Port** (`tui/interaction.rs`): produktiv
-  `Modals`, im Test `Headless`. Nur so ist der Tastenpfad ohne Terminal testbar.
+- **Precision:** internally always the full `f64`; rounding only in the display
+  (`format`). History stores input strings + computed `f64` values.
+- **`ans`** of a history line = value of the preceding line. Editing/
+  deleting recomputes all lines below it (`recompute`).
+- **Separators:** input is tolerant (spaces, `_`, as well as whichever
+  of `.`/`,` is the other one as thousands separator); display uses the configured
+  separators. `y` copies the raw value (full precision, without thousands separator),
+  `Y` copies as displayed (rounded, with separators, later unit).
+- **Dialogs via the `Interaction` port** (`tui/interaction.rs`): in production
+  `Modals`, in tests `Headless`. Only that way is the key path testable without a terminal.
 
-## Spätere Erweiterungen (Architektur offen halten, jetzt nicht umsetzen)
+## Later extensions (keep the architecture open, do not implement now)
 
-CLI-Schicht (`cli/` + `sparcli`), GUI. calcli ist bewusst TUI-only: es gibt
-keine Subcommands und keine `println!`-Ausgabe – `sparcli` wird daher nicht
-eingebunden.
+CLI layer (`cli/` + `sparcli`), GUI. calcli is deliberately TUI-only: there are
+no subcommands and no `println!` output – `sparcli` is therefore not
+included.
 
-## Fehler-Meldungen sind Verhalten
+## Error messages are behavior
 
-`AppError` (`domain/errors.rs`) ist der einzige Fehlertyp der Domäne; das
-`Display` jeder Variante ist genau das, was der Nutzer in der Statuszeile liest
-und was die History für eine fehlgeschlagene Zeile speichert. Eine Meldung zu
-ändern ist eine nutzersichtbare Änderung, kein Refactoring – `AppError::Units`
-gibt rinks Wortlaut deshalb unverändert weiter (rink formuliert ganze Sätze),
-während `AppError::Calculator` das Fragment von meval präfixiert.
-`every_failure_mode_keeps_its_message` in `calc_service.rs` friert alle
-Meldungen ein.
+`AppError` (`domain/errors.rs`) is the domain's only error type; the
+`Display` of each variant is exactly what the user reads in the status line
+and what the history stores for a failed line. Changing a message
+is a user-visible change, not a refactoring – `AppError::Units`
+therefore passes rink's wording through unchanged (rink phrases whole sentences),
+while `AppError::Calculator` prefixes the fragment from meval.
+`every_failure_mode_keeps_its_message` in `calc_service.rs` freezes all
+messages.

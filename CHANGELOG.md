@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-10
+
 ### Added
 
 - Autocomplete in the input field: typing an identifier opens a dropdown of matching variables, built-in functions and constants. `↑`/`↓` pick, `Enter`/`Tab`/`→` accept, `Esc` closes. While it is open `↑` steers it, so `PgUp` browses the history from there.

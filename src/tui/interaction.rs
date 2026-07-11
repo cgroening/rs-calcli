@@ -2,7 +2,7 @@
 //!
 //! `ratada`'s modals need a live `&mut Tui`, which a test cannot build: they
 //! put the terminal into raw mode. Hiding them behind [`Interaction`] keeps the
-//! key path testable - [`Headless`] answers every dialog without a terminal -
+//! key path testable - a headless fake answers dialogs without a terminal -
 //! while production still gets the real dimmed-backdrop modals via [`Modals`].
 //!
 //! Every dialog can end in [`Answer::ForcedQuit`]: `Ctrl+Q` is honoured inside

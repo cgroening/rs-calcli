@@ -1,7 +1,7 @@
 //! Syntax-highlight styles and the caret colours the text editor paints with.
 //!
 //! Everything the shared palette already names (accent, selection, borders,
-//! errors) is read from [`Palette`](crate::theme::Palette). Only the per-token
+//! errors) is read from [`Palette`]. Only the per-token
 //! expression colours live here, because no palette colour means "the colour of
 //! a function name".
 

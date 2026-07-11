@@ -1,5 +1,9 @@
 # calcli
 
+[![Crates.io](https://img.shields.io/crates/v/calcli.svg)](https://crates.io/crates/calcli)
+[![Docs.rs](https://docs.rs/calcli/badge.svg)](https://docs.rs/calcli)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A fast terminal calculator (TUI) with an editable history, stored variables and
 a few helpers engineers reach for. Built with [Ratatui](https://ratatui.rs).
 
@@ -54,6 +58,8 @@ the display is rounded.
   any older calcli still loads.
 
 ## Install
+
+calcli builds on Rust 1.88 or newer (MSRV).
 
 From crates.io:
 
@@ -292,3 +298,7 @@ See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the project layout and
 When you change a shortcut, the footer and the help overlay follow the action
 catalog in `src/keymap.rs` automatically – but the key tables in this README and
 the `[keys]` block in `examples/config.toml` have to be updated by hand.
+
+## License
+
+Licensed under the [MIT License](LICENSE).

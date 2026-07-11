@@ -54,8 +54,8 @@ target.nosync
 rls
 *.o
 
-# Cargo lock (keep for binaries, ignore for libraries - adjust per project)
-Cargo.lock
+# Cargo.lock is committed: calcli ships as a binary, so the lockfile pins the
+# exact dependency versions the release is built and tested against.
 
 # Cargo config
 .cargo/config.toml
@@ -71,8 +71,4 @@ Cargo.lock
 
 # rustc internal compiler error dumps
 rustc-ice-*.txt
-
-# Tauri
-# will have schema files for capabilities auto-completion
-/gen/schemas
 

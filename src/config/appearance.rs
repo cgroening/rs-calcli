@@ -8,7 +8,7 @@ use crate::theme::GlyphVariant;
 pub const CALCLI_THEME: &str = "calcli";
 
 /// Block-cursor colour (a muted red), distinct from the accent and selection.
-/// Lives here rather than in [`super::CALCLI_COLORS`] because `cursor` is a
+/// Lives here rather than in `super::CALCLI_COLORS` because `cursor` is a
 /// palette colour derived by `ratada`, not a theme base colour.
 pub const DEFAULT_CURSOR_COLOR: &str = "#d65c5c";
 
@@ -23,6 +23,8 @@ pub const DEFAULT_CURSOR_COLOR: &str = "#d65c5c";
 /// never in doubt - but it stays below the border drawn around it. Both are
 /// overridable under `[appearance.colors]`.
 pub const DEFAULT_INPUT_BG: &str = "#100e15";
+/// The fill of the input field while it holds the keyboard, lifted clearly
+/// above the content surface so the caret's location is never in doubt.
 pub const DEFAULT_INPUT_BG_ACTIVE: &str = "#262336";
 
 /// The tint behind the selected history entry and the selected list row.

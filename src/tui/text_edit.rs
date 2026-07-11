@@ -92,7 +92,10 @@ pub enum EditMode {
     SingleLine,
     /// Soft-wrapped at `width` columns: `Home`/`End` act on the display line and
     /// `Up`/`Down` move across wrapped lines. The value never contains `\n`.
-    Multiline { width: usize },
+    Multiline {
+        /// The column count at which the value soft-wraps.
+        width: usize,
+    },
 }
 
 /// Applies an editing key to `(text, cursor)`, returning `true` when the key was

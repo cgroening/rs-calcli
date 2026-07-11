@@ -17,7 +17,12 @@ pub enum Statement {
     /// `=name` - store the previous answer in a variable.
     SaveAns(String),
     /// `name = expr` - evaluate `expr` and store it in `name`.
-    Assign { name: String, expr: String },
+    Assign {
+        /// The variable name receiving the result.
+        name: String,
+        /// The expression evaluated for the stored value.
+        expr: String,
+    },
     /// A bare expression to evaluate.
     Expression(String),
 }

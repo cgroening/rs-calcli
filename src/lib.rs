@@ -8,6 +8,8 @@
 //! shared by the TUI dispatch and the shortcut hints. The binary wires them
 //! together in `main.rs`.
 
+#![deny(missing_docs)]
+
 pub mod config;
 pub mod demo;
 pub mod domain;

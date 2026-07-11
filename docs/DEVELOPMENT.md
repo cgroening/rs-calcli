@@ -181,6 +181,19 @@ follows `border` unless it is set. `tui/views/calc.rs::focus_skin` swaps it into
 `chrome::border_title` reads the title's leading stroke from `palette.border` –
 that one stroke would otherwise stay dark.
 
+## Configuration
+
+`config/loader.rs` builds the `Config` in three layers, each overriding the one
+before it: the built-in defaults, then `config.toml` if it exists (a missing file
+is not an error), then the `CALCLI_*` environment variables
+(`CALCLI_THEME`, `CALCLI_DECIMALS`, `CALCLI_ACCENT`, …). `examples/config.toml`
+is the fully commented reference for every key, and it is kept in step with the
+defaults and the `[keys]` catalog by hand.
+
+Two things the loader is strict about live in their own sections: the colour
+tables (see `Colours`) and the refusal of unknown keys (see
+`On-disk compatibility`).
+
 ## Error messages
 
 `AppError` (`domain/errors.rs`) is the domain's only error type, and each
@@ -216,6 +229,15 @@ and the same file minus that line still loads with its colours mapped.
 
 Removing a config key is therefore a breaking change to be announced in
 `CHANGELOG.md`, not a silent one to be papered over.
+
+## Logging
+
+Diagnostics go through the `log` crate, never `println!`/`eprintln!`: a TUI owns
+the terminal, and writing to stderr would corrupt the alternate screen. The
+backend is `util/logging.rs`, a minimal `Log` implementation that appends to a
+file. `main` installs it once at `Info` level, pointed at `paths::log_file()`;
+when no file can be opened the logger stays a silent no-op, so logging is never
+fatal. Visible TUI output (the status band, the history) is not logging.
 
 ## Tests
 
