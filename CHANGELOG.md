@@ -13,10 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Autocomplete in the input field: typing an identifier opens a dropdown of matching variables, built-in functions and constants. `↑`/`↓` pick, `Enter`/`Tab`/`→` accept, `Esc` closes. While it is open `↑` steers it, so `PgUp` browses the history from there.
 - History search on `Ctrl+R`: a fuzzy finder over past inputs that recalls the chosen line into the input, ready to edit or resubmit.
 - Command palette on `Ctrl+P`: run any action by name, filtered fuzzily. Commands unavailable in the current context are shown dimmed. The `[keys]` names and descriptions come from the same action catalog as the footer and help.
-- The colour of the input box's focused frame is now configurable, as
-  `border_focus` under `[appearance.colors]` or in a `[themes.<name>]`. Left out
-  it follows `border`, and overriding `border` alone drags it along, so the
-  focused frame never sinks into its own border.
+- The colour of the input box's focused frame is now configurable, as `border_focus` under `[appearance.colors]` or in a `[themes.<name>]`. Left out it follows `border`, and overriding `border` alone drags it along, so the focused frame never sinks into its own border.
 - Three views with a tab bar – Calc, Variables and Settings – switched with `Alt+1` / `Alt+2` / `Alt+3` (`F4` still opens Variables). The Calc view is a text field, so bare digits stay typeable. The active view is restored on the next start.
 - Settings view: every display setting on one editable list (`←`/`→` steps the focused value, applied live), including the colour theme and the glyph set. The function keys keep working from every view.
 - Grouped shortcut hints in the footer, closing with a `Global` group. `F1` hides the whole band and the state survives a restart; the band gives way rather than squeezing the input box off a small terminal.
@@ -41,11 +38,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - Pressing `↑` on the first autocomplete suggestion cleared the highlight instead of moving within the dropdown. Navigation now wraps cyclically: `↑` on the first row lands on the last and `↓` on the last returns to the first.
-- A `[themes.<name>]` table naming a colour the toolkit derives (`cursor`,
-  `selection`, the input fills, …) had the value silently discarded: the table
-  was validated against every palette colour, but only the theme's own base
-  colours were read. Such a colour is now reported and belongs in
-  `[appearance.colors]`.
+- A `[themes.<name>]` table naming a colour the toolkit derives (`cursor`, `selection`, the input fills, …) had the value silently discarded: the table was validated against every palette colour, but only the theme's own base colours were read. Such a colour is now reported and belongs in `[appearance.colors]`.
 - A `state.toml` written before units existed – where a dimensionless variable was a bare number (`g = 9.81`) rather than a table – failed to parse, and the failure was swallowed by starting from an empty session. Upgrading silently discarded the user's settings, variables and history. Both shapes are now read; the table is written.
 - Restoring the persisted theme dropped the configured colour overrides, so on every restart the block cursor turned accent-coloured and the input field turned bright. The overrides are now re-applied whenever the theme changes, at startup and when cycling it at runtime.
 - The `--demo` banner told the user to press `F1` for help, a leftover from the old binding. Help is `F12` or `?`; `F1` toggles the shortcut hints.
