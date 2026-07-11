@@ -197,13 +197,13 @@ fn render_history(
         return metrics;
     }
 
-    // Decide whether a scrollbar is needed at full width; if so, reserve one
-    // column as a gutter between the content and the scrollbar.
+    // Decide whether a scrollbar is needed at full width; if so, reserve two
+    // columns: one blank gutter plus the scrollbar column itself.
     let probe = entry_starts(view, full_width);
     let total = *probe.last().expect("entry_starts appends a sentinel");
     let overflow = total > height;
     let width = if overflow {
-        full_width.saturating_sub(1).max(1)
+        full_width.saturating_sub(2).max(1)
     } else {
         full_width
     };
