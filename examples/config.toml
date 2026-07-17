@@ -156,8 +156,11 @@ unit = "#ff79c6"
 ## Key bindings ###############################################################
 
 # Rebind any action. A value is one key or a list of keys. Modifiers are
-# `ctrl+`, `alt+` and `shift+`; shift is otherwise carried by a character's case
-# (`D` is Shift+D). Function keys are `f1`..`f12`.
+# `ctrl+`, `alt+` and `shift+`. On a character, shift is carried by the case
+# (`D` is Shift+D) and `shift+` is ignored; on any other key it is part of the
+# chord, so `shift+left` and `left` are two different keys. Function keys are
+# `f1`..`f12`; named keys are `enter`, `esc`, `tab`, `backtab`, `space`,
+# `backspace`, `insert`, `del`, `home`, `end`, `pgup`, `pgdn` and the arrows.
 #
 # `ctrl+q` is not bindable: it is the toolkit's unconditional escape hatch, and
 # `f1` toggles the shortcut hints. Both are shown in the footer's Global group.

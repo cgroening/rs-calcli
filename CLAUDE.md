@@ -10,7 +10,7 @@ Layer separation with the composition root in `main.rs`, DI via traits (DIP). ca
 - `services/` – `calc_service`: orchestration (submit/edit/delete + recompute, variables, settings). No I/O. The **error funnel** also lives here: `StorageError`/`ConfigError` are turned into `AppError::Storage` (the cause chain is flattened into the message).
 - `storage/` – `StateRepository` trait + TOML implementation (`state.toml`, written atomically) + `errors` (`StorageError`, never leaves the layer).
 - `config/` – `Config` (+ defaults), `appearance`, `highlight`, `loader` (default → TOML → env `CALCLI_*`), incl. compatibility shim for 0.2.
-- `keymap.rs` – action catalog: **SSOT** for key dispatch, footer hints, help overlay and the `[keys]` names in the config.
+- `keymap.rs` – action catalog + the `Scope` rule: **SSOT** for key dispatch, footer hints, help overlay and the `[keys]` names in the config. The chord grammar itself is `ratada::keymap`; `Keymap` wraps it to keep the context-aware lookup, and the `Scope` overlap rule reaches the toolkit's conflict check through `Action::overlaps`.
 - `tui/` – Ratatui surface: `appframe` (shared app frame), `app` (`ratada::Screen`), `bindings`, `interaction` (port for blocking dialogs), `colors`, `text_edit`, `views/{calc,variables,settings}`.
 - `util/` – `fs` (atomic writes), `paths`, `logging`.
 
@@ -18,9 +18,9 @@ The computation engine sits behind the `Evaluator` trait; units run through `dom
 
 ## Toolkit: `ratada`
 
-Widgets, theming, modals, help overlay, terminal guard, event loop, shortcut hints, quit logic and clipboard come from `ratada` (path dependency). `crate::theme` is a re-export of `ratada::theme`. **Do not rebuild a widget that already exists there** – if one is missing, extend the lib (agree on it beforehand), no app-local copy.
+Widgets, theming, modals, help overlay, terminal guard, event loop, shortcut hints, chord grammar (`ratada::keymap`), modifier rules (`ratada::input::is_command` / `is_bare_character`), quit logic and clipboard come from `ratada` (path dependency). `crate::theme` is a re-export of `ratada::theme`. **Do not rebuild a widget that already exists there** – if one is missing, extend the lib (agree on it beforehand), no app-local copy.
 
-The only deliberate exception: `tui/text_edit.rs`. calcli highlights its input character by character with color; `ratada::input::InputField` and `ratada::textarea::TextArea` render only plain text.
+The only deliberate exception: `tui/text_edit.rs`. calcli highlights its input character by character with color; `ratada::input::InputField` and `ratada::textarea::TextArea` render only plain text. The exception is the *rendering* – never the key rules: **never test `KeyModifiers::CONTROL` directly**, always `ratada::input::is_command`, otherwise `AltGr` (reported as Ctrl+Alt) is swallowed instead of typing `@ \ [ ~`.
 
 ## Mandatory rules (from the Style Guide, Rust §8)
 
@@ -54,9 +54,9 @@ Panel layout from `clibase`: tinted header panel with **only** brand + tab bar, 
 
 ## Modal keys: scopes
 
-calcli is modal (`Enter` means something different in every context). That is why every `Action` in `keymap.rs` carries a `Scope`; a chord is resolved only in the scopes that are active in the current `Context`. Two bindings collide only when their scopes can be active at the same time.
+calcli is modal (`Enter` means something different in every context). That is why every `Action` in `keymap.rs` carries a `Scope`; a chord is resolved only in the scopes that are active in the current `Context`. Two bindings collide only when their scopes can be active at the same time – `Action::overlaps` carries that rule into the toolkit's conflict check, which cannot know it.
 
-A **bare printable character never triggers an action** as long as a text field has the keyboard – only that way do `q`, `?`, `y`, `d` stay typable. For the same reason the tab keys are `Alt+1..3` instead of bare digits.
+A **bare printable character never triggers an action** as long as a text field has the keyboard – only that way do `q`, `?`, `y`, `d` stay typable. For the same reason the tab keys are `Alt+1..3` instead of bare digits. The test is `ratada::input::is_bare_character` (re-exported from `keymap.rs`), never a hand-rolled one.
 
 ## Domain specifics
 

@@ -69,21 +69,27 @@ src/
 
 ## The toolkit
 
-The terminal toolkit comes from [`ratada`](../../../libs/ratada): the terminal guard and event loop (`Tui`, `Screen`, `run`), the widgets (`list`, `tabs`, `statusbar`, `scroll`, `chrome`), the blocking modals and the help overlay, the theming (`Palette`, `Skin`, `Glyphs`, `ThemeRegistry`), the shortcut hints, the quit machinery and the clipboard. `crate::theme` is a re-export of `ratada::theme`, so nothing reaches for a second path.
+The terminal toolkit comes from [`ratada`](../../../libs/ratada): the terminal guard and event loop (`Tui`, `Screen`, `run`), the widgets (`list`, `tabs`, `statusbar`, `scroll`, `chrome`), the blocking modals and the help overlay, the theming (`Palette`, `Skin`, `Glyphs`, `ThemeRegistry`), the shortcut hints, the chord grammar (`keymap`), the modifier rules (`input::is_command`, `input::is_bare_character`), the quit machinery and the clipboard. `crate::theme` is a re-export of `ratada::theme`, so nothing reaches for a second path.
 
 Before writing a widget, look for it in `ratada`. If it is missing, extend the library rather than keeping a copy here.
 
 **The one deliberate exception** is `tui/text_edit.rs`. calcli colours its input per character (functions, constants, operators, numbers, variables, units, `ans`, comments), and `ratada::input::InputField` / `ratada::textarea::TextArea` render plain text with no per-token style hook. Everything else the old calcli had – its own colours, modals, help overlay, terminal guard and clipboard – is gone in favour of the toolkit.
 
+The exception covers the *rendering*, not the key rules: `text_edit` asks `ratada::input::is_command` whether a key is a chord rather than testing `CONTROL` itself. A terminal reports `AltGr` as Control+Alt, so a plain Control check swallows the characters it produces (`@`, `\`, `[`, `~` on a German layout) instead of typing them.
+
 ## The action catalog
 
 `src/keymap.rs` is the single source of truth for shortcuts. Each `Action` row carries its `[keys]` config name, its human description, its **scope** and its default keys. From that one table come the key dispatch, the footer hints, the help overlay and the `config` documentation.
 
-calcli is modal, which a flat chord-to-action map cannot express: `Enter` submits an expression in the input, applies an in-place edit, edits a line in the history, inserts a name in the variables list and steps a value in the settings list. So each action names a `Scope`, a key is resolved within the scopes active in the current `Context`, and two bindings only *conflict* when their scopes can be active at the same time. A conflict is logged, and the earlier action in the catalog keeps the key.
+The chord grammar underneath is not calcli's: parsing a `[keys]` string, rendering a key, merging the defaults with the overrides and detecting a shadowed binding all live in `ratada::keymap`, which every app on the toolkit shares. calcli implements `ratada::keymap::Action` for its own enum and keeps what is genuinely its own – the catalog, the scopes and the lookup.
+
+calcli is modal, which a flat chord-to-action map cannot express: `Enter` submits an expression in the input, applies an in-place edit, edits a line in the history, inserts a name in the variables list and steps a value in the settings list. So each action names a `Scope`, and a key is resolved within the scopes active in the current `Context`. `Keymap` is therefore a newtype around `ratada::keymap::Keymap<Action>` rather than a bare alias: the toolkit holds the bindings, while the context-aware lookup stays here, where `Scope` lives.
+
+The same split governs conflicts. Two bindings only *conflict* when their scopes can be active at the same time – a rule the toolkit cannot know, so `Action::overlaps` hands it down and the toolkit's check applies it. A conflict is logged, and the earlier action in the catalog keeps the key.
 
 Two rules the catalog enforces:
 
-- A bare printable character never triggers an action while a text field has the keyboard. That is what keeps `q`, `?`, `y` and `d` typeable inside an expression, and why the view tabs are `Alt+N` rather than bare digits.
+- A bare printable character never triggers an action while a text field has the keyboard. That is what keeps `q`, `?`, `y` and `d` typeable inside an expression, and why the view tabs are `Alt+N` rather than bare digits. The test is `ratada::input::is_bare_character`, re-exported here; it is stricter than "not a chord", because an `AltGr` character must type rather than dispatch.
 - `Ctrl+Q` is never bound. It is the toolkit's unconditional escape hatch, and it is reported by `shortcut_hints::global_bindings()` together with `F1`. Both appear in the closing `Global` group, which `App::global_group` builds once and hands to *both* the footer and the help overlay – they cannot drift apart.
 
 When you add or rebind a shortcut, update `src/keymap.rs`, then the key tables in `README.md` and the `[keys]` block in `examples/config.toml`. The footer and help follow on their own.

@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- `ratada` 0.3 → 0.4. The chord grammar – parsing a `[keys]` value, rendering a key for the footer, merging the defaults with the overrides and reporting a shadowed binding – now comes from the toolkit instead of being kept in-tree; the action catalog, the scopes and the context-aware lookup stay in calcli. Nothing changes for the user: `[keys]` understands the same chords as before, plus the new `backtab` and `insert` tokens.
+- `Shift` is now significant on a non-character key: `Shift+↑` no longer steers the history, because `up` and `shift+up` are two distinct chords. A character is unaffected – its `Shift` still lives in the case (`D` is Shift+D).
+
+### Fixed
+
+- `AltGr` characters now reach the input field. A terminal reports `AltGr` as Control+Alt, and the plain Control check read `AltGr+@`, `AltGr+\`, `AltGr+[` and `AltGr+~` as a chord rather than as text, so on a German layout those characters could not be typed into an expression at all.
+- `Ctrl+Y` silently confirmed the delete, clear and reset prompts instead of copying the result: the dialog compared the key code and ignored the modifiers, so a chord triggered its bare `y` answer. A destructive prompt now answers only to a real `y`.
+
 ## [0.3.0] - 2026-07-10
 
 ### Added

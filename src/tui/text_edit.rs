@@ -107,7 +107,10 @@ pub fn apply_edit_key(
     key: KeyEvent,
     mode: EditMode,
 ) -> bool {
-    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    // `is_command`, not a bare CONTROL check: AltGr is reported as Control+Alt
+    // and produces real characters (`@`, `\`, `[`, `~`), which must type here
+    // rather than be swallowed as a chord.
+    let ctrl = ratada::input::is_command(key);
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
     if let Some(target) = motion_target(text, cursor.pos, key, mode) {
         if shift {
@@ -150,7 +153,9 @@ pub fn handle_clipboard(
     cursor: &mut TextCursor,
     key: KeyEvent,
 ) -> bool {
-    if !key.modifiers.contains(KeyModifiers::CONTROL) {
+    // `is_command`, so an AltGr character is typed instead of being read as a
+    // clipboard chord.
+    if !ratada::input::is_command(key) {
         return false;
     }
     match key.code {
@@ -517,6 +522,37 @@ mod tests {
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    /// `AltGr` as the terminal reports it: Control+Alt plus the character it
+    /// produces.
+    fn alt_gr(ch: char) -> KeyEvent {
+        KeyEvent::new(
+            KeyCode::Char(ch),
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
+        )
+    }
+
+    /// On a German layout `AltGr` types `@ \ [ ~`. Those must reach the input,
+    /// not be read as chords - the reason this file tests `is_command` rather
+    /// than a bare CONTROL check.
+    #[test]
+    fn altgr_characters_are_typed_not_treated_as_chords() {
+        for ch in ['@', '\\', '[', '~'] {
+            let mut text = String::new();
+            let mut cursor = TextCursor::default();
+            assert!(
+                !handle_clipboard(&mut text, &mut cursor, alt_gr(ch)),
+                "AltGr+{ch} must not be a clipboard chord"
+            );
+            assert!(apply_edit_key(
+                &mut text,
+                &mut cursor,
+                alt_gr(ch),
+                EditMode::SingleLine,
+            ));
+            assert_eq!(text, ch.to_string(), "AltGr+{ch} must type");
+        }
     }
 
     fn ctrl(code: KeyCode) -> KeyEvent {

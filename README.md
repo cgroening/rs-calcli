@@ -59,7 +59,9 @@ Every key below is rebindable under `[keys]` in the config. The footer and the h
 
 ### Global
 
-Available everywhere. The function keys and `Alt` chords also work while typing, because they can never be part of an expression.
+Available everywhere. The function keys and `Alt` chords also work while typing, because they are not themselves expression characters.
+
+> `AltGr` is the exception, and it types. A terminal reports it as Control+Alt, so the characters it produces – `@`, `\`, `[`, `~` on a German layout – would otherwise read as chords; they reach the input instead.
 
 > `Alt+N` reaches the app only if your terminal sends `Alt` as a meta prefix. Ghostty, WezTerm, Alacritty and kitty do by default. In iTerm2 set *Left Option key* to `Esc+`; in macOS Terminal.app enable *Use Option as Meta key*. Otherwise rebind `view_calc` / `view_variables` / `view_settings` under `[keys]` – `F4` already reaches the Variables view unaided.
 
@@ -183,11 +185,11 @@ Layered, with the composition root in `main.rs` and dependencies pointing inward
 - `services/` – `CalcService`: orchestration (submit / edit / delete + recompute, variables, settings). Also the error funnel: a `StorageError` is converted here into a domain error, so nothing below names files or TOML.
 - `storage/` – `StateRepository` port + an atomic TOML implementation.
 - `config/` – `Config`, the appearance/highlight sections and the loader (defaults → TOML → `CALCLI_*`).
-- `keymap.rs` – the action catalog: the single source for key dispatch, the footer hints, the help overlay and the `[keys]` config names.
+- `keymap.rs` – the action catalog and the scope rule: the single source for key dispatch, the footer hints, the help overlay and the `[keys]` config names. The chord grammar itself comes from `ratada::keymap`.
 - `tui/` – the Ratatui front-end: a shared `appframe`, one module per view, and an `Interaction` port so the key path is testable without a terminal.
 - `util/` – atomic writes, paths, logging.
 
-The terminal toolkit (widgets, theming, modals, the event loop, the clipboard) comes from [`ratada`](../../libs/ratada), so calcli holds no copy of it. The one deliberate exception is `tui/text_edit.rs`: calcli syntax-highlights its input per character, and `ratada`'s text widgets render plain text only.
+The terminal toolkit (widgets, theming, modals, the event loop, the chord grammar, the clipboard) comes from [`ratada`](../../libs/ratada), so calcli holds no copy of it. The one deliberate exception is `tui/text_edit.rs`: calcli syntax-highlights its input per character, and `ratada`'s text widgets render plain text only. Even there the exception is the rendering – the key rules come from the toolkit.
 
 Dimensionless math runs through the `Evaluator` trait (meval), keeping full `f64` precision and the angle mode; anything involving units is routed to the `domain::units` wrapper around `rink-core`, which owns conversion and unit arithmetic.
 
