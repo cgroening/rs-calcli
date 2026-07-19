@@ -38,7 +38,7 @@ log = { version = "0.4", features = ["std"] }
 unicode-width = "0.2"
 # Shared TUI toolkit: terminal guard, driver, widgets, theming, keymap,
 # input rules, clipboard.
-ratada = { path = "../../libs/ratada", version = "0.4" }
+ratada = { path = "../../libs/ratada", version = "0.5" }
 # https://crates.io/crates/rink-core - units engine (conversion + unit arithmetic).
 # bundle-files embeds the units database so no data files are needed at runtime.
 rink-core = { version = "0.9.0", features = ["bundle-files"] }
