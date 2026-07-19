@@ -137,7 +137,8 @@ impl History {
     /// Re-evaluates entries from `start` to the end, threading the most recent
     /// computed value into the next line's `ans`.
     ///
-    /// `evaluate` receives the line's input and its `ans` (the most recent value
+    /// `evaluate` receives the line's input and its `ans` (the most recent
+    /// value
     /// produced above it, or `None` when there is none) and returns the new
     /// value/error. Lines without a value (notes or errors) leave `ans`
     /// unchanged, so they never break the chain. It is called in order, so a

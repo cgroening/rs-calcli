@@ -6,13 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **`-h`/`--help` and `-V`/`--version`.** calcli answers both on stdout and exits with 0. Argument parsing now goes through `clap`, so an unknown option is reported with a pointer to `--help` and exits with 2 instead of being ignored.
+- **`PgUp`/`PgDn` in the Variables and Settings views.** They were bound and documented as list keys but did nothing at all: the key resolved and was then dropped by the view's handler. They now move the selection by one screenful, clamped at both ends, and appear in the footer hints and the help overlay like the other navigation keys. `Home`/`End` worked already and are now documented too.
+- The command palette (`Ctrl+P`) appears in the footer hints beside the history search, instead of only in the closing `Global` group.
+
 ### Changed
 
+- **A long variable name or value is truncated with `…`.** The rows were handed to the list widget unclipped, so an overlong entry was cut off mid-glyph with nothing to say it had been. The settings rows are clipped the same way.
+- Errors now print as `calcli: error: …` on stderr, and a failure to open the log file reports as `calcli: warning: …` rather than being swallowed.
 - `ratada` 0.3 → 0.4. The chord grammar – parsing a `[keys]` value, rendering a key for the footer, merging the defaults with the overrides and reporting a shadowed binding – now comes from the toolkit instead of being kept in-tree; the action catalog, the scopes and the context-aware lookup stay in calcli. Nothing changes for the user: `[keys]` understands the same chords as before, plus the new `backtab` and `insert` tokens.
 - `Shift` is now significant on a non-character key: `Shift+↑` no longer steers the history, because `up` and `shift+up` are two distinct chords. A character is unaffected – its `Shift` still lives in the case (`D` is Shift+D).
 
 ### Fixed
 
+- **The log file now records what the config loader did.** The logger was installed *after* the configuration was read, so every message about which file was loaded and which keys were ignored was written to a logger that did not exist yet.
+- A pasted multi-line value can no longer put a line break into the expression buffer.
 - `AltGr` characters now reach the input field. A terminal reports `AltGr` as Control+Alt, and the plain Control check read `AltGr+@`, `AltGr+\`, `AltGr+[` and `AltGr+~` as a chord rather than as text, so on a German layout those characters could not be typed into an expression at all.
 - `Ctrl+Y` silently confirmed the delete, clear and reset prompts instead of copying the result: the dialog compared the key code and ignored the modifiers, so a chord triggered its bare `y` answer. A destructive prompt now answers only to a real `y`.
 

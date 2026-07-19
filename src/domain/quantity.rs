@@ -3,7 +3,8 @@
 //! The value is the number shown to the user, paired with the unit it is
 //! expressed in (e.g. `1230` and `"bar"`). A quantity with no unit is
 //! dimensionless and behaves like a plain number, so the rest of the calculator
-//! treats `f64` results as dimensionless quantities. All dimensional reasoning -
+//! treats `f64` results as dimensionless quantities. All dimensional reasoning
+//! -
 //! conversion, arithmetic, derived units - is done by [`crate::domain::units`]
 //! (rink) when the expression is evaluated; this type just carries the result.
 
@@ -18,11 +19,36 @@ pub struct Quantity {
 
 impl Quantity {
     /// A dimensionless quantity (a plain number).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use calcli::domain::quantity::Quantity;
+    ///
+    /// let count = Quantity::dimensionless(42.0);
+    /// assert!(count.is_dimensionless());
+    /// assert_eq!(count.unit_symbol(), None);
+    /// ```
     pub fn dimensionless(value: f64) -> Self {
         Quantity { value, unit: None }
     }
 
     /// A quantity of `value` expressed in `unit`.
+    ///
+    /// The value is kept at full `f64` precision; rounding happens only in
+    /// [`crate::domain::format`], so further arithmetic never loses digits to
+    /// the display.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use calcli::domain::quantity::Quantity;
+    ///
+    /// let force = Quantity::new(50.0, "kN");
+    /// assert_eq!(force.unit_symbol(), Some("kN"));
+    /// assert_eq!(force.display_value(), 50.0);
+    /// assert!(!force.is_dimensionless());
+    /// ```
     pub fn new(value: f64, unit: impl Into<String>) -> Self {
         Quantity {
             value,

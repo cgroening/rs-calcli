@@ -1,6 +1,7 @@
 //! Syntax classification for expression highlighting.
 //!
-//! A pure tokenizer that labels each character of an input with a [`TokenKind`],
+//! A pure tokenizer that labels each character of an input with a
+//! [`TokenKind`],
 //! so the TUI can colour functions, constants, operators, numbers, variables,
 //! parentheses and the `ans` keyword. It has no knowledge of styling (a Ratatui
 //! concern); the view maps kinds to styles. Unknown identifiers stay

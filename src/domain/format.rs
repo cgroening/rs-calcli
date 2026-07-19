@@ -136,7 +136,8 @@ pub fn format_display(
     with_unit(format_number(quantity.display_value(), settings), quantity)
 }
 
-/// Renders a quantity as a plain, directly reusable value: full `f64` precision,
+/// Renders a quantity as a plain, directly reusable value: full `f64`
+/// precision,
 /// the configured decimal mark, no grouping, plus the unit. This is what `y`
 /// copies.
 pub fn format_plain(quantity: &Quantity, settings: &FormatSettings) -> String {
@@ -173,7 +174,8 @@ fn format_number(value: f64, settings: &FormatSettings) -> String {
     }
 }
 
-/// Drops trailing zeros from the fractional part of a formatted number, removing
+/// Drops trailing zeros from the fractional part of a formatted number,
+/// removing
 /// the decimal `mark` itself when nothing is left after it.
 ///
 /// Only the run of digits immediately after `mark` is touched, so a trailing

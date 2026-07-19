@@ -47,15 +47,30 @@ Or run without installing:
 cargo run --release
 ```
 
-Start with `--demo` to fill the session with sample data (history, variables, unit conversions) for a quick tour – demo mode never writes to your saved session:
+## Command line
+
+calcli has exactly one job and therefore no subcommands: called without arguments it opens the calculator.
+
+```text
+Usage: calcli [OPTIONS]
+
+Options:
+      --demo         Fills the session with sample data and leaves the saved state alone
+  -h, --help         Shows this help and exits
+  -V, --version      Shows the version and exits
+```
+
+`--demo` fills the session with sample data (history, variables, unit conversions) for a quick tour and never writes to your saved session:
 
 ```sh
 calcli --demo
 ```
 
+Exit codes follow the usual convention: `0` on success, `1` on a runtime error, `2` on a usage error (an unknown option). Errors go to stderr as `calcli: error: …`.
+
 ## Keys
 
-Every key below is rebindable under `[keys]` in the config. The footer and the help overlay (`F12` or `?`) are both generated from the same action catalog, so they can never disagree with each other. `Ctrl+Q` and `F1` belong to the toolkit and cannot be rebound.
+Every key below is rebindable under `[keys]` in the config, with three exceptions: `Ctrl+Q` and `F1` belong to the toolkit, and the clipboard chords `Ctrl+C` / `Ctrl+X` / `Ctrl+V` belong to the text editor rather than to the action catalog. The footer and the help overlay (`F12` or `?`) are both generated from that catalog, so they can never disagree with each other – and a test holds this table to it.
 
 ### Global
 
@@ -126,6 +141,8 @@ Switching views is locked while a line is being edited; the tab bar dims to say 
 | Key | Action |
 | --- | --- |
 | `↑` `↓` | select (cyclic) |
+| `PgUp` `PgDn` | move by one screenful (clamped) |
+| `Home` `End` | jump to the first / last variable |
 | `Enter` | insert the name into the input and return to Calc |
 | `y` / `Y` | copy the value (plain / as shown) |
 | `d` / `Del` | delete the variable |
@@ -137,6 +154,8 @@ Switching views is locked while a line is being edited; the tab bar dims to say 
 | Key | Action |
 | --- | --- |
 | `↑` `↓` | select a setting (cyclic) |
+| `PgUp` `PgDn` | move by one screenful (clamped) |
+| `Home` `End` | jump to the first / last setting |
 | `←` / `→` or `Enter` | step the focused value (applied live) |
 | `Esc` | back to Calc |
 

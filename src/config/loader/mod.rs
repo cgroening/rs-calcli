@@ -17,122 +17,28 @@
 //! chrome colours become `[appearance.colors]` overrides, and the eight token
 //! colours become `[highlight]`. The new sections win where both are present.
 
-use std::collections::BTreeMap;
+mod env;
+mod legacy;
+mod raw;
+mod validate;
+
 use std::io;
 use std::path::Path;
 
-use serde::Deserialize;
-
 use crate::config::appearance::Appearance;
 use crate::config::highlight::HighlightColors;
+use crate::config::loader::legacy::RawLegacyTheme;
+use crate::config::loader::raw::{
+    ColorMap, RawAppearance, RawConfig, RawHighlight,
+};
+use crate::config::loader::validate::{report_unknown, unknown_color_names};
 use crate::config::{Config, ConfigError};
-use crate::domain::format::{AngleMode, Notation};
 use crate::theme::{
-    Color, GlyphVariant, Palette, ThemeColors, parse_color as parse_theme_color,
+    Color, GlyphVariant, ThemeColors, parse_color as parse_theme_color,
 };
 use crate::util::paths;
 
-/// A colour-override table (`name -> value`), used for `[appearance.colors]`
-/// and each `[themes.<name>]`.
-type ColorMap = BTreeMap<String, String>;
-
-/// The on-disk shape: every field optional so partial files merge cleanly, and
-/// wide enough to cover both the 0.2 layout and the current one.
-#[derive(Debug, Default, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-struct RawConfig {
-    notation: Option<Notation>,
-    decimals: Option<usize>,
-    angle_mode: Option<AngleMode>,
-    decimal_separator: Option<String>,
-    thousands_separator: Option<String>,
-    trim_trailing_zeros: Option<bool>,
-    max_history: Option<usize>,
-    restore_last_settings: Option<bool>,
-    live_feedback: Option<bool>,
-    history_spacing: Option<usize>,
-    history_separator: Option<bool>,
-    input_max_lines: Option<usize>,
-    confirm_delete: Option<bool>,
-    confirm_quit: Option<bool>,
-
-    /// Legacy (0.2) top-level glyph set; superseded by `[appearance].glyphs`.
-    glyphs: Option<GlyphVariant>,
-    /// Legacy (0.2) flat `[theme]` colour table. Not to be confused with the
-    /// theme *name*, which is the scalar `theme` inside `[appearance]`.
-    theme: Option<RawLegacyTheme>,
-
-    appearance: Option<RawAppearance>,
-    /// Syntax-highlight token colours (`[highlight]`).
-    highlight: Option<RawHighlight>,
-    /// User-defined themes, each a `[themes.<name>]` colour table.
-    themes: BTreeMap<String, ColorMap>,
-    /// Per-action key overrides (`[keys]`), each a string or a list of strings.
-    keys: BTreeMap<String, KeyBinding>,
-}
-
-/// The `[appearance]` table, all optional.
-#[derive(Debug, Default, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-struct RawAppearance {
-    theme: Option<String>,
-    glyphs: Option<GlyphVariant>,
-    /// Per-colour overrides (`[appearance.colors]`), keyed by palette colour.
-    colors: ColorMap,
-}
-
-/// The `[highlight]` table, all optional.
-#[derive(Debug, Default, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-struct RawHighlight {
-    function: Option<String>,
-    constant: Option<String>,
-    operator: Option<String>,
-    number: Option<String>,
-    variable: Option<String>,
-    ans: Option<String>,
-    comment: Option<String>,
-    unit: Option<String>,
-}
-
-/// The legacy `[theme]` table written by calcli 0.2, all optional.
-#[derive(Debug, Default, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-struct RawLegacyTheme {
-    accent_color: Option<String>,
-    function_color: Option<String>,
-    constant_color: Option<String>,
-    operator_color: Option<String>,
-    number_color: Option<String>,
-    variable_color: Option<String>,
-    ans_color: Option<String>,
-    comment_color: Option<String>,
-    unit_color: Option<String>,
-    settings_bar_bg: Option<String>,
-    /// Tinted every second history entry, a feature that no longer exists.
-    /// Read by nothing, but still named here: `deny_unknown_fields` would
-    /// otherwise reject every 0.2 config that sets it.
-    #[allow(dead_code, reason = "accepted for compatibility, without effect")]
-    history_alt_bg: Option<String>,
-    history_separator_color: Option<String>,
-}
-
-/// A key binding from config: either one key or a list of keys.
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum KeyBinding {
-    One(String),
-    Many(Vec<String>),
-}
-
-impl KeyBinding {
-    fn into_keys(self) -> Vec<String> {
-        match self {
-            KeyBinding::One(key) => vec![key],
-            KeyBinding::Many(keys) => keys,
-        }
-    }
-}
+pub use crate::config::loader::env::apply_env;
 
 /// Loads the configuration from the default config path, then applies the
 /// environment overrides.
@@ -259,7 +165,7 @@ fn merge_appearance(
     defaults: Appearance,
 ) -> Appearance {
     let mut colors = defaults.colors;
-    for (name, value) in legacy_chrome_colors(legacy) {
+    for (name, value) in legacy::chrome_colors(legacy) {
         colors.insert(name.to_string(), value);
     }
     colors.extend(raw.colors);
@@ -268,23 +174,6 @@ fn merge_appearance(
         colors,
         glyphs: raw.glyphs.or(legacy_glyphs).unwrap_or(defaults.glyphs),
     }
-}
-
-/// The legacy `[theme]` colours that map onto a palette colour.
-///
-/// `history_alt_bg` is absent on purpose: it tinted the zebra stripe, which no
-/// longer exists. Mapping it onto `panel` would point it at a colour calcli
-/// never draws, which reads as support for something that is gone.
-fn legacy_chrome_colors(
-    legacy: &RawLegacyTheme,
-) -> impl Iterator<Item = (&'static str, String)> + '_ {
-    [
-        ("accent", &legacy.accent_color),
-        ("footer", &legacy.settings_bar_bg),
-        ("border", &legacy.history_separator_color),
-    ]
-    .into_iter()
-    .filter_map(|(name, value)| Some((name, value.clone()?)))
 }
 
 /// Merges `[highlight]` over the defaults, falling back to the legacy
@@ -329,47 +218,6 @@ fn theme_colors(raw: &ColorMap) -> ThemeColors {
     })
 }
 
-/// Every colour the file names in a section that cannot carry it, as
-/// `(section, name)` pairs.
-///
-/// The two sections take different colour sets, and mixing them up is silent:
-/// `[appearance.colors]` overrides any palette colour, while a
-/// `[themes.<name>]` contributes only the [`ThemeColors`] a palette is derived
-/// *from*. Validating a theme against `Palette::KEYS` accepts the derived ones
-/// (`selection`, `cursor`, `input_bg`, …) and then drops the value without a
-/// word.
-fn unknown_color_names(raw: &RawConfig) -> Vec<(String, String)> {
-    let mut unknown = Vec::new();
-    if let Some(appearance) = &raw.appearance {
-        for name in unknown_colors(&appearance.colors, Palette::KEYS) {
-            unknown.push(("appearance.colors".to_string(), name.to_string()));
-        }
-    }
-    for (theme, colors) in &raw.themes {
-        for name in unknown_colors(colors, ThemeColors::KEYS) {
-            unknown.push((format!("themes.{theme}"), name.to_string()));
-        }
-    }
-    unknown
-}
-
-/// The keys of `colors` that are not in `known`, in file order.
-fn unknown_colors<'a>(colors: &'a ColorMap, known: &[&str]) -> Vec<&'a str> {
-    colors
-        .keys()
-        .map(String::as_str)
-        .filter(|name| !known.contains(name))
-        .collect()
-}
-
-/// Warns about each unusable colour name, so a typo (or a colour in the wrong
-/// section) surfaces instead of being silently ignored.
-fn report_unknown(unknown: &[(String, String)]) {
-    for (section, name) in unknown {
-        log::warn!("unknown colour '{name}' in [{section}], ignoring");
-    }
-}
-
 /// Parses a decimal-separator string, accepting only `.` or `,`.
 fn parse_separator(value: &str) -> Option<char> {
     match value {
@@ -385,59 +233,19 @@ fn parse_separator(value: &str) -> Option<char> {
     }
 }
 
-/// Applies `CALCLI_*` environment overrides on top of the file/defaults.
-pub fn apply_env(config: &mut Config) {
-    if let Ok(value) = std::env::var("CALCLI_DECIMAL_SEPARATOR")
-        && let Some(separator) = parse_separator(&value)
-    {
-        config.decimal_separator = separator;
-    }
-    if let Ok(value) = std::env::var("CALCLI_DECIMALS")
-        && let Ok(decimals) = value.parse::<usize>()
-    {
-        config.decimals = decimals;
-    }
-    if let Ok(value) = std::env::var("CALCLI_ACCENT")
-        && !value.is_empty()
-    {
-        config.appearance.colors.insert("accent".to_string(), value);
-    }
-    if let Ok(value) = std::env::var("CALCLI_THEME")
-        && !value.is_empty()
-    {
-        // The name is validated when resolved against the theme registry.
-        config.appearance.theme = value;
-    }
-    if let Ok(value) = std::env::var("CALCLI_GLYPHS") {
-        match value.to_ascii_lowercase().as_str() {
-            "ascii" => config.appearance.glyphs = GlyphVariant::Ascii,
-            "unicode" => config.appearance.glyphs = GlyphVariant::Unicode,
-            _ => {}
-        }
-    }
-    if let Ok(value) = std::env::var("CALCLI_CONFIRM_QUIT")
-        && let Ok(flag) = value.parse::<bool>()
-    {
-        config.confirm_quit = flag;
-    }
-    if let Ok(value) = std::env::var("CALCLI_CONFIRM_DELETE")
-        && let Ok(flag) = value.parse::<bool>()
-    {
-        config.confirm_delete = flag;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::CALCLI_THEME;
+    use crate::domain::format::{AngleMode, Notation};
+    use crate::theme::Palette;
 
     /// The complete `config.toml` calcli 0.2 shipped as `examples/config.toml`.
     const LEGACY_CONFIG: &str =
-        include_str!("../../tests/data/config-0.2.toml");
+        include_str!("../../../tests/data/config-0.2.toml");
 
     /// The example config we ship today.
-    const EXAMPLE_CONFIG: &str = include_str!("../../examples/config.toml");
+    const EXAMPLE_CONFIG: &str = include_str!("../../../examples/config.toml");
 
     /// The example is documentation, and documentation that no longer parses is
     /// worse than none: it hands the user a file that stops calcli from

@@ -30,7 +30,8 @@ pub enum Statement {
 /// The character that starts an inline comment (to the end of the line).
 pub const COMMENT_CHAR: char = '#';
 
-/// Returns the code part of `input`: everything before the first comment marker.
+/// Returns the code part of `input`: everything before the first comment
+/// marker.
 /// The comment itself is kept by the caller (history/display) but never
 /// evaluated.
 pub fn strip_comment(input: &str) -> &str {
@@ -142,7 +143,8 @@ pub fn prepend_ans(expr: &str, ans: Option<f64>) -> String {
     expr.to_string()
 }
 
-/// Replaces the `ans` token with the previous answer (parenthesized for safety).
+/// Replaces the `ans` token with the previous answer (parenthesized for
+/// safety).
 pub fn substitute_ans(expr: &str, ans: Option<f64>) -> String {
     match ans {
         Some(value) => substitute_identifier(expr, "ans", value),

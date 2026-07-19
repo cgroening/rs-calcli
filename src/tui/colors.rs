@@ -5,11 +5,11 @@
 //! expression colours live here, because no palette colour means "the colour of
 //! a function name".
 
+use ratada::style::{dim, fg, to_ratatui};
 use ratatui::style::{Color, Modifier, Style};
 
 use crate::config::HighlightColors;
 use crate::domain::highlight::TokenKind;
-use crate::theme::Color as ThemeColor;
 use crate::theme::Palette;
 
 /// The colours the block caret and the selection are painted with, resolved
@@ -30,19 +30,6 @@ impl CaretColors {
             selection: to_ratatui(palette.selection),
         }
     }
-}
-
-/// Converts a toolkit colour into a ratatui one.
-pub fn to_ratatui(color: ThemeColor) -> Color {
-    match color.rgb() {
-        Some((red, green, blue)) => Color::Rgb(red, green, blue),
-        None => Color::Reset,
-    }
-}
-
-/// A dim style for secondary text.
-pub fn dim() -> Style {
-    Style::default().add_modifier(Modifier::DIM)
 }
 
 /// The resolved per-category styles for syntax highlighting.
@@ -66,7 +53,6 @@ impl Highlight {
     /// Operators are rendered bold, parentheses dim, `ans` underlined and
     /// comments italic; the rest use their configured colour plainly.
     pub fn new(colors: &HighlightColors) -> Self {
-        let fg = |color: ThemeColor| Style::default().fg(to_ratatui(color));
         Highlight {
             function: fg(colors.function),
             constant: fg(colors.constant),
@@ -107,13 +93,6 @@ pub fn styles_for(kinds: &[TokenKind], highlight: &Highlight) -> Vec<Style> {
 mod tests {
     use super::*;
     use crate::config::Config;
-
-    #[test]
-    fn a_toolkit_colour_maps_onto_a_ratatui_rgb() {
-        let rgb = to_ratatui(ThemeColor::hex("#010203"));
-        assert_eq!(rgb, Color::Rgb(1, 2, 3));
-        assert_eq!(to_ratatui(ThemeColor::Default), Color::Reset);
-    }
 
     #[test]
     fn highlight_maps_the_token_colours_and_adds_the_modifiers() {

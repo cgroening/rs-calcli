@@ -51,4 +51,4 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 
 ## Code of conduct
 
-Participation in this project is governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
+Be decent to each other. There is no separate code-of-conduct document; if that ever changes, it will be linked here.

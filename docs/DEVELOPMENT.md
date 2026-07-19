@@ -12,6 +12,8 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
+`cargo deny check` runs the advisory and licence audit against `deny.toml`. It is not installed by default (`cargo install cargo-deny`) and there is no CI workflow in this repository, so it is a local step.
+
 Then drive the real thing – tests do not catch a broken layout:
 
 ```sh
@@ -26,7 +28,7 @@ Dependencies point inward, toward `domain`. Nothing below a layer knows about th
 src/
   main.rs        composition root: config, state, service, TUI, save on exit
   lib.rs         APP_NAME/APP_VERSION, and `pub use ratada::theme`
-  keymap.rs      the action catalog (see below)
+  keymap/        mod (Context, Scope, Keymap) + catalog (the action table)
   demo.rs        the --demo session
 
   domain/        pure, no I/O
@@ -41,28 +43,32 @@ src/
     variables.rs   the store
 
   services/      orchestration, no I/O
-    calc_service.rs   submit / edit / delete + recompute, settings
+    calc_service.rs   the façade: submit / edit / delete + recompute, settings
+    eval.rs           the evaluation router: meval vs. rink, unit literals
     mod.rs            the error funnel: StorageError -> AppError::Storage
 
   storage/       persistence
     repository.rs   the StateRepository port and the on-disk shape
     toml_state.rs   the TOML adapter, writing atomically
-    errors.rs       StorageError, which never leaves this layer
+    errors.rs       StorageError, which reaches no layer above the service
 
   config/        defaults -> config.toml -> CALCLI_*
     mod.rs          Config, the calcli theme, and the palette/keymap helpers
     appearance.rs   theme name, glyphs, palette overrides
     highlight.rs    the eight token colours
-    loader.rs       the merge, including the 0.2 compatibility shim
+    loader/         mod (entry points + merge), raw (the on-disk shape),
+                    legacy (the 0.2 shim), validate (unknown colours), env
 
   tui/           the Ratatui front-end
-    app.rs         App: the Screen implementation and the key dispatch
+    app/           App: the state in mod.rs, the handlers in child modules
+                   (dispatch, render, hints, calc_input, calc_history,
+                   variables, settings, clipboard) - see below
     appframe.rs    the shared frame every view draws through
     bindings.rs    which actions each view hints at
     interaction.rs the port the blocking dialogs open through
     colors.rs      the syntax-highlight styles and the caret colours
-    text_edit.rs   the highlighted, soft-wrapping editor (see below)
-    views/         calc, variables, settings
+    text_edit.rs   the per-character colouring of a wrapped value (see below)
+    views/         calc/ (mod, history, input, completion), variables, settings
 
   util/          fs (atomic writes), paths, logging
 ```
@@ -73,9 +79,13 @@ The terminal toolkit comes from [`ratada`](../../../libs/ratada): the terminal g
 
 Before writing a widget, look for it in `ratada`. If it is missing, extend the library rather than keeping a copy here.
 
-**The one deliberate exception** is `tui/text_edit.rs`. calcli colours its input per character (functions, constants, operators, numbers, variables, units, `ans`, comments), and `ratada::input::InputField` / `ratada::textarea::TextArea` render plain text with no per-token style hook. Everything else the old calcli had – its own colours, modals, help overlay, terminal guard and clipboard – is gone in favour of the toolkit.
+**The one deliberate exception** is `tui/text_edit.rs`, and it covers the *rendering* only. calcli colours its input per character (functions, constants, operators, numbers, variables, units, `ans`, comments), and `ratada::input::InputField` / `ratada::textarea::TextArea` render plain text with no per-token style hook. Everything else the old calcli had – its own colours, modals, help overlay, terminal guard and clipboard – is gone in favour of the toolkit.
 
-The exception covers the *rendering*, not the key rules: `text_edit` asks `ratada::input::is_command` whether a key is a chord rather than testing `CONTROL` itself. A terminal reports `AltGr` as Control+Alt, so a plain Control check swallows the characters it produces (`@`, `\`, `[`, `~` on a German layout) instead of typing them.
+The module used to be a fork of the whole edit core: its own `TextCursor`, `EditMode`, `apply_edit_key`, `handle_clipboard`, `replace_selection` and soft-wrap arithmetic, roughly 400 of its 685 lines duplicating `ratada::input` and `ratada::textarea`. That fork is gone; what those names refer to now are re-exports, and the file is down to the span builders that actually need to exist here.
+
+Removing it needed one addition to the toolkit. The input holds an **expression**, which is one logical line by definition while being too long to sit on one row. `EditMode::SingleLine` navigates wrongly there (`Home`/`End` would jump the whole value rather than the display line), and `EditMode::Multiline` lets `Enter` and a pasted newline put a `\n` into a buffer that must never contain one. `ratada::input::EditMode::Wrapped` is the mode that sits between them: it navigates like `Multiline` and keeps `SingleLine`'s newline rule.
+
+The key rules in particular are never reimplemented here: `ratada::input::is_command` decides whether a key is a chord, rather than a hand-rolled `CONTROL` test. A terminal reports `AltGr` as Control+Alt, so a plain Control check swallows the characters it produces (`@`, `\`, `[`, `~` on a German layout) instead of typing them.
 
 ## The action catalog
 
@@ -92,7 +102,7 @@ Two rules the catalog enforces:
 - A bare printable character never triggers an action while a text field has the keyboard. That is what keeps `q`, `?`, `y` and `d` typeable inside an expression, and why the view tabs are `Alt+N` rather than bare digits. The test is `ratada::input::is_bare_character`, re-exported here; it is stricter than "not a chord", because an `AltGr` character must type rather than dispatch.
 - `Ctrl+Q` is never bound. It is the toolkit's unconditional escape hatch, and it is reported by `shortcut_hints::global_bindings()` together with `F1`. Both appear in the closing `Global` group, which `App::global_group` builds once and hands to *both* the footer and the help overlay – they cannot drift apart.
 
-When you add or rebind a shortcut, update `src/keymap.rs`, then the key tables in `README.md` and the `[keys]` block in `examples/config.toml`. The footer and help follow on their own.
+When you add or rebind a shortcut, update `src/keymap/catalog.rs`, then the key tables in `README.md` and the `[keys]` block in `examples/config.toml`. The footer and help follow on their own – and `tests/docs_in_sync.rs` fails if the two documents do not, so this is a checked requirement rather than a request.
 
 ## The app frame
 
@@ -123,7 +133,7 @@ The input box's focused frame is `palette.border_focus`, a toolkit colour that f
 
 ## Configuration
 
-`config/loader.rs` builds the `Config` in three layers, each overriding the one before it: the built-in defaults, then `config.toml` if it exists (a missing file is not an error), then the `CALCLI_*` environment variables (`CALCLI_THEME`, `CALCLI_DECIMALS`, `CALCLI_ACCENT`, …). `examples/config.toml` is the fully commented reference for every key, and it is kept in step with the defaults and the `[keys]` catalog by hand.
+`config/loader.rs` builds the `Config` in three layers, each overriding the one before it: the built-in defaults, then `config.toml` if it exists (a missing file is not an error), then the `CALCLI_*` environment variables (`CALCLI_THEME`, `CALCLI_DECIMALS`, `CALCLI_ACCENT`, …). `examples/config.toml` is the fully commented reference for every key. It is held to the defaults by `the_shipped_example_config_parses_and_states_the_defaults` in `config/loader/mod.rs`, and to the action catalog by `tests/docs_in_sync.rs`; neither can rot unnoticed.
 
 Two things the loader is strict about live in their own sections: the colour tables (see `Colours`) and the refusal of unknown keys (see `On-disk compatibility`).
 

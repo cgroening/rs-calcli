@@ -8,7 +8,7 @@
 use std::cell::Cell;
 
 use ratada::theme::{GlyphVariant, Skin};
-use ratada::{list, style};
+use ratada::{list, markdown, style};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Modifier;
@@ -184,7 +184,12 @@ pub fn step_decimals(current: usize, delta: isize) -> usize {
 }
 
 /// Renders the settings list into `area`.
-pub fn render(frame: &mut Frame, area: Rect, skin: &Skin, view: &SettingsView) {
+pub fn render(
+    frame: &mut Frame,
+    area: Rect,
+    skin: &Skin,
+    view: &SettingsView,
+) -> usize {
     let palette = &skin.palette;
     let width = Row::all()
         .iter()
@@ -196,7 +201,7 @@ pub fn render(frame: &mut Frame, area: Rect, skin: &Skin, view: &SettingsView) {
         .iter()
         .map(|&row| {
             let value = view.values.of(row);
-            Line::from(vec![
+            let spans = vec![
                 Span::styled(
                     format!(" {:width$}  ", row.label(), width = width),
                     style::secondary(palette),
@@ -207,7 +212,12 @@ pub fn render(frame: &mut Frame, area: Rect, skin: &Skin, view: &SettingsView) {
                     style::fg(palette.accent).add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(" \u{203a}", style::muted(palette)),
-            ])
+            ];
+            Line::from(markdown::clip_spans(
+                spans,
+                area.width as usize,
+                style::muted(palette),
+            ))
         })
         .collect();
 
@@ -220,7 +230,7 @@ pub fn render(frame: &mut Frame, area: Rect, skin: &Skin, view: &SettingsView) {
             selected: view.selected.min(Row::all().len() - 1),
             offset: view.offset,
         },
-    );
+    )
 }
 
 #[cfg(test)]

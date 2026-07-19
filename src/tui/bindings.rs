@@ -32,6 +32,7 @@ pub const INPUT_HINT_GROUPS: &[Group] = &[(
         Action::ClearInput,
         Action::CopyLast,
         Action::SearchHistory,
+        Action::OpenPalette,
     ],
 )];
 
@@ -72,7 +73,18 @@ pub const HISTORY_HINT_GROUPS: &[Group] = &[
 
 /// The Variables view.
 pub const VARIABLES_HINT_GROUPS: &[Group] = &[
-    ("Navigation", &[Action::Up, Action::Down, Action::Back]),
+    (
+        "Navigation",
+        &[
+            Action::Up,
+            Action::Down,
+            Action::PageUp,
+            Action::PageDown,
+            Action::Top,
+            Action::Bottom,
+            Action::Back,
+        ],
+    ),
     (
         "Actions",
         &[
@@ -87,7 +99,18 @@ pub const VARIABLES_HINT_GROUPS: &[Group] = &[
 
 /// The Settings view.
 pub const SETTINGS_HINT_GROUPS: &[Group] = &[
-    ("Navigation", &[Action::Up, Action::Down, Action::Back]),
+    (
+        "Navigation",
+        &[
+            Action::Up,
+            Action::Down,
+            Action::PageUp,
+            Action::PageDown,
+            Action::Top,
+            Action::Bottom,
+            Action::Back,
+        ],
+    ),
     ("Change", &[Action::PreviousValue, Action::NextValue]),
 ];
 

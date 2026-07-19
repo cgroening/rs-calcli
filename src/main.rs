@@ -1,9 +1,11 @@
-//! Composition root: load config and persisted state, wire the service and the
-//! TUI, run the event loop and save the session on exit.
+//! Composition root: parse the arguments, load config and persisted state,
+//! wire the service and the TUI, run the event loop and save the session on
+//! exit.
 
 use std::process::ExitCode;
 
 use anyhow::Context;
+use clap::Parser;
 use log::LevelFilter;
 use ratada::Tui;
 
@@ -18,11 +20,31 @@ use calcli::storage::{PersistedState, StateRepository, TomlStateRepository};
 use calcli::tui::{self, App};
 use calcli::util::{logging, paths};
 
+/// calcli takes no subcommands: it has exactly one job, so an argument-less
+/// call starts the calculator rather than printing the help.
+#[derive(Debug, Parser)]
+#[command(
+    name = calcli::APP_NAME,
+    version,
+    about = calcli::APP_ABOUT,
+    long_about = "Starts the interactive calculator. Called without \
+                  arguments, calcli opens its terminal interface; there are \
+                  no subcommands."
+)]
+struct Cli {
+    /// Fills the session with sample data and leaves the saved state alone.
+    #[arg(long)]
+    demo: bool,
+}
+
 fn main() -> ExitCode {
-    match run() {
+    // clap reports an unknown option or a bad value itself and exits with 2,
+    // which is what the CLI conventions ask for; nothing is caught here.
+    let cli = Cli::parse();
+    match run(&cli) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("calcli: {error:#}");
+            eprintln!("{}: error: {error:#}", calcli::APP_NAME);
             ExitCode::FAILURE
         }
     }
@@ -32,10 +54,19 @@ fn main() -> ExitCode {
 ///
 /// With `--demo`, the session is seeded with sample data and is *not* saved on
 /// exit, so the real `state.toml` is left untouched.
-fn run() -> anyhow::Result<()> {
-    let demo = std::env::args().any(|arg| arg == "--demo");
+fn run(cli: &Cli) -> anyhow::Result<()> {
+    let demo = cli.demo;
+    // Before `load_config`, which logs which file it read and what it ignored.
+    // Installed later, those records would be dropped on the floor.
+    if let Err(error) =
+        logging::init(LevelFilter::Info, Some(&paths::log_file()))
+    {
+        eprintln!(
+            "{}: warning: continuing without a log file: {error:#}",
+            calcli::APP_NAME,
+        );
+    }
     let config = load_config().context("loading configuration")?;
-    let _ = logging::init(LevelFilter::Info, Some(&paths::log_file()));
 
     let repository = TomlStateRepository::new(paths::state_file());
     let state = if demo {

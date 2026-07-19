@@ -2,7 +2,8 @@
 //!
 //! rink owns the unit database, dimensional analysis, conversion and arithmetic
 //! with units; this module exposes just what calcli needs: [`eval`] to evaluate
-//! a unit-bearing query into a `(value, unit)` pair, and [`is_unit`] to tell the
+//! a unit-bearing query into a `(value, unit)` pair, and [`is_unit`] to tell
+//! the
 //! router and the syntax highlighter whether a symbol names a unit.
 //!
 //! The rink [`Context`] is expensive to build (tens of milliseconds) and is not
@@ -50,6 +51,30 @@ fn with_context<T>(f: impl FnOnce(&mut Context) -> T) -> T {
 /// Returns [`AppError::Units`] when rink cannot parse the query, the units are
 /// incompatible, or the result is not a plain number. rink's own one-line
 /// wording is kept, since it names the offending unit.
+///
+/// # Examples
+///
+/// A conversion reports the value already in the target unit:
+///
+/// ```
+/// use calcli::domain::units::eval;
+///
+/// let (value, _) = eval("3 m -> cm")?;
+/// assert_eq!(value, 300.0);
+/// # Ok::<(), calcli::domain::errors::AppError>(())
+/// ```
+///
+/// Anything else comes back in SI base units, so `scale_of` the reported name
+/// is what expresses it in that unit:
+///
+/// ```
+/// use calcli::domain::units::{eval, scale_of};
+///
+/// let (base, unit) = eval("20 kN + 300 N")?;
+/// let unit = unit.expect("a force carries a unit");
+/// assert_eq!(base / scale_of(&unit)?, 20.3);
+/// # Ok::<(), calcli::domain::errors::AppError>(())
+/// ```
 pub fn eval(query: &str) -> Result<(f64, Option<String>)> {
     let reply = with_context(|ctx| rink_eval(ctx, query))
         .map_err(|error| AppError::Units(first_line(&error.to_string())))?;
@@ -60,13 +85,24 @@ pub fn eval(query: &str) -> Result<(f64, Option<String>)> {
 /// The SI base-unit magnitude of one `unit` (e.g. `1000` for `kN`/`kilonewton`,
 /// `1` for `m/s`).
 ///
-/// rink reports a result's [`eval`] value in SI base units but may name the unit
+/// rink reports a result's [`eval`] value in SI base units but may name the
+/// unit
 /// with a prefix; dividing the value by this scale re-expresses it in the named
 /// unit. Memoized indirectly through rink's context.
 ///
 /// # Errors
 ///
 /// Returns [`AppError::Units`] when `unit` is not a unit rink can evaluate.
+///
+/// # Examples
+///
+/// ```
+/// use calcli::domain::units::scale_of;
+///
+/// assert_eq!(scale_of("kN")?, 1000.0);
+/// assert_eq!(scale_of("m")?, 1.0);
+/// # Ok::<(), calcli::domain::errors::AppError>(())
+/// ```
 pub fn scale_of(unit: &str) -> Result<f64> {
     let (value, _) = eval(&format!("1 {unit}"))?;
     Ok(value)

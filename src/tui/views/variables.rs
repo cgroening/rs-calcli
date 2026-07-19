@@ -4,7 +4,7 @@
 use std::cell::Cell;
 
 use ratada::theme::Skin;
-use ratada::{list, style};
+use ratada::{list, markdown, style};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Modifier;
@@ -29,7 +29,8 @@ pub struct VariablesView<'a> {
     pub offset: &'a Cell<usize>,
 }
 
-/// Renders the variables list into `area`.
+/// Renders the variables list into `area` and returns its viewport height in
+/// rows, which the key path uses as the page size.
 ///
 /// The `position/total` badge lands in a reserved last row rather than over a
 /// row, so it never hides a variable.
@@ -38,20 +39,21 @@ pub fn render(
     area: Rect,
     skin: &Skin,
     view: &VariablesView,
-) {
+) -> usize {
     if view.variables.is_empty() {
         let hint = Line::from(Span::styled(
             "no variables yet - use =name or name = expr",
             style::secondary(&skin.palette),
         ));
         frame.render_widget(Paragraph::new(hint), area);
-        return;
+        return 0;
     }
 
+    let width = area.width as usize;
     let rows: Vec<Line<'static>> = view
         .variables
         .iter()
-        .map(|variable| variable_line(skin, variable))
+        .map(|variable| variable_line(skin, variable, width))
         .collect();
 
     list::render_counted(
@@ -63,20 +65,29 @@ pub fn render(
             selected: view.selected.min(view.variables.len() - 1),
             offset: view.offset,
         },
-    );
+    )
 }
 
-/// One variable row: `name = value`.
-fn variable_line(skin: &Skin, variable: &Variable) -> Line<'static> {
+/// One variable row: `name = value`, clipped to `width` columns.
+///
+/// A name or value can be arbitrarily long, and the list widget hands its rows
+/// straight to ratatui, which cuts them off mid-glyph without a mark. Clipping
+/// here is what puts the `…` on.
+fn variable_line(
+    skin: &Skin,
+    variable: &Variable,
+    width: usize,
+) -> Line<'static> {
     let palette = &skin.palette;
-    Line::from(vec![
+    let spans = vec![
         Span::styled(
             format!(" {} ", variable.name),
             style::fg(palette.accent).add_modifier(Modifier::BOLD),
         ),
         Span::styled("= ", style::secondary(palette)),
         Span::raw(variable.value.clone()),
-    ])
+    ];
+    Line::from(markdown::clip_spans(spans, width, style::muted(palette)))
 }
 
 #[cfg(test)]
@@ -107,7 +118,9 @@ mod tests {
             offset: &offset,
         };
         terminal
-            .draw(|frame| render(frame, frame.area(), &skin(), &view))
+            .draw(|frame| {
+                render(frame, frame.area(), &skin(), &view);
+            })
             .expect("draw");
         terminal
             .backend()

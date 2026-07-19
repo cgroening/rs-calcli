@@ -6,6 +6,7 @@
 //! detail survives while the domain stays free of infrastructure types.
 
 pub mod calc_service;
+mod eval;
 
 pub use calc_service::{CalcService, Preview, SubmitOutcome};
 

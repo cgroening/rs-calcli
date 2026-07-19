@@ -7,11 +7,11 @@
 Layer separation with the composition root in `main.rs`, DI via traits (DIP). calcli follows the `clibase` template; reference projects for style and structure: `clibase`, `mdtask`, `numcli`, `hop`.
 
 - `domain/` – pure core logic: `errors` (`AppError`), `evaluator` (trait + `MevalEvaluator`), `units` (rink), `expression`, `format`, `highlight`, `completion` (suggestion names + word under the cursor, shares the name lists with `highlight`), `history`, `quantity`, `variables`. No I/O.
-- `services/` – `calc_service`: orchestration (submit/edit/delete + recompute, variables, settings). No I/O. The **error funnel** also lives here: `StorageError`/`ConfigError` are turned into `AppError::Storage` (the cause chain is flattened into the message).
-- `storage/` – `StateRepository` trait + TOML implementation (`state.toml`, written atomically) + `errors` (`StorageError`, never leaves the layer).
-- `config/` – `Config` (+ defaults), `appearance`, `highlight`, `loader` (default → TOML → env `CALCLI_*`), incl. compatibility shim for 0.2.
-- `keymap.rs` – action catalog + the `Scope` rule: **SSOT** for key dispatch, footer hints, help overlay and the `[keys]` names in the config. The chord grammar itself is `ratada::keymap`; `Keymap` wraps it to keep the context-aware lookup, and the `Scope` overlap rule reaches the toolkit's conflict check through `Action::overlaps`.
-- `tui/` – Ratatui surface: `appframe` (shared app frame), `app` (`ratada::Screen`), `bindings`, `interaction` (port for blocking dialogs), `colors`, `text_edit`, `views/{calc,variables,settings}`.
+- `services/` – `calc_service` (the façade: submit/edit/delete + recompute, variables, settings) and `eval` (the meval-vs-rink router and the unit-literal substitution). No I/O. The **error funnel** also lives here: `StorageError`/`ConfigError` are turned into `AppError::Storage` (the cause chain is flattened into the message).
+- `storage/` – `StateRepository` trait + TOML implementation (`state.toml`, written atomically) + `errors` (`StorageError`, which reaches no layer above the service).
+- `config/` – `Config` (+ defaults), `appearance`, `highlight`, `loader/` (default → TOML → env `CALCLI_*`), split into `raw` (the on-disk shape), `legacy` (the 0.2 shim), `validate` and `env`.
+- `keymap/` – `catalog` (the action table) + `mod` (`Context`, `Scope`, `Keymap`): **SSOT** for key dispatch, footer hints, help overlay and the `[keys]` names in the config. The chord grammar itself is `ratada::keymap`; `Keymap` wraps it to keep the context-aware lookup, and the `Scope` overlap rule reaches the toolkit's conflict check through `Action::overlaps`.
+- `tui/` – Ratatui surface: `appframe` (shared app frame), `app/` (the `App` state in `mod.rs`, its handlers split into `dispatch`, `render`, `hints`, `calc_input`, `calc_history`, `variables`, `settings`, `clipboard`), `bindings`, `interaction` (port for blocking dialogs), `colors`, `text_edit`, `views/{calc/,variables,settings}`.
 - `util/` – `fs` (atomic writes), `paths`, `logging`.
 
 The computation engine sits behind the `Evaluator` trait; units run through `domain::units` (rink-core).
@@ -20,9 +20,11 @@ The computation engine sits behind the `Evaluator` trait; units run through `dom
 
 Widgets, theming, modals, help overlay, terminal guard, event loop, shortcut hints, chord grammar (`ratada::keymap`), modifier rules (`ratada::input::is_command` / `is_bare_character`), quit logic and clipboard come from `ratada` (path dependency). `crate::theme` is a re-export of `ratada::theme`. **Do not rebuild a widget that already exists there** – if one is missing, extend the lib (agree on it beforehand), no app-local copy.
 
-The only deliberate exception: `tui/text_edit.rs`. calcli highlights its input character by character with color; `ratada::input::InputField` and `ratada::textarea::TextArea` render only plain text. The exception is the *rendering* – never the key rules: **never test `KeyModifiers::CONTROL` directly**, always `ratada::input::is_command`, otherwise `AltGr` (reported as Ctrl+Alt) is swallowed instead of typing `@ \ [ ~`.
+The only deliberate exception: `tui/text_edit.rs`. calcli highlights its input character by character with color; `ratada::input::InputField` and `ratada::textarea::TextArea` render only plain text. The exception is the *rendering* and nothing else – the caret, the editing keys, the clipboard and the wrap arithmetic are re-exports of `ratada::input`/`ratada::textarea`, and **never test `KeyModifiers::CONTROL` directly**, always `ratada::input::is_command`, otherwise `AltGr` (reported as Ctrl+Alt) is swallowed instead of typing `@ \ [ ~`.
 
-## Mandatory rules (from the Style Guide, Rust §8)
+The input runs in `EditMode::Wrapped`: an expression is one logical line that merely wraps for display, so `Enter` stays calcli's (it submits) and a paste can never put a `\n` into the buffer.
+
+## Mandatory rules (from the Style Guide, Rust §2.4)
 
 - **Edition 2024**, MSRV 1.88 (`ratada` uses let-chains); `rustfmt` (default + `group_imports=StdExternalCrate`, `imports_granularity=Module`); `cargo clippy --all-targets -- -D warnings` must be clean.
 - **Error handling:** `Result<T, E>` + `?`. `thiserror` for domain errors (one error type per domain), `anyhow` only at the binary edge (`main`). **No `unwrap()`**; `expect()` only in provably infallible places (with a rationale). No `panic!` in the normal flow. Input errors → status line, never a crash.
@@ -36,12 +38,12 @@ The only deliberate exception: `tui/text_edit.rs`. calcli highlights its input c
 - **Tests** are always shipped along (`#[cfg(test)] mod tests` per file, integration tests in `tests/`); test names describe the expected behavior; fakes over mocks. **Run `cargo test` after every change.**
 - **Minimize dependencies**; agree on new crates beforehand. Document established crates with `// https://crates.io/crates/<name>` above the `use`.
 - **Maintain the changelog:** enter every user-visible change in `CHANGELOG.md` (format "Keep a Changelog") under `## [Unreleased]`; on a release, version/date the section and bump the `version` in `Cargo.toml` per SemVer.
-- **Shortcut changes:** adjust `keymap.rs`, then update the key tables in `README.md` and the `[keys]` block in `examples/config.toml` accordingly. Footer and help follow automatically.
+- **Shortcut changes:** adjust `keymap/catalog.rs`, then update the key tables in `README.md` and the `[keys]` block in `examples/config.toml` accordingly. Footer and help follow automatically, and `tests/docs_in_sync.rs` fails if the two documents do not.
 - **On-disk formats backward compatible:** new fields `#[serde(default)]`. `tests/legacy_data.rs` guards both files against real fixtures. They fail differently, so different rules apply:
   - `state.toml` must keep *reading* **every form ever written**, even if it is no longer *written*. `main` treats an unreadable `state.toml` as an empty session – a rejected file silently discards settings, variables and the entire history.
   - `config.toml` **may lose a key**: `deny_unknown_fields` rejects the file, `main` prints the cause chain and aborts. Nothing is lost, the message names the line. This is a user-visible, breaking change and belongs in the `CHANGELOG.md` – not a refactoring.
 
-## TUI conventions (Style Guide §8.10)
+## TUI conventions (Style Guide §1.7 and §2.4.11)
 
 Panel layout from `clibase`: tinted header panel with **only** brand + tab bar, raised content area, tinted status band (the active settings on the left, the transient status message on the right), below it a blank line and the background-less shortcut hints. The app frame draws **no** border lines; `BorderType::Rounded` applies only to individual widgets (input field, modals). Everything is drawn via `tui::appframe::render_frame` (SSOT).
 
@@ -65,9 +67,15 @@ A **bare printable character never triggers an action** as long as a text field 
 - **Separators:** input is tolerant (spaces, `_`, as well as whichever of `.`/`,` is the other one as thousands separator); display uses the configured separators. `y` copies the raw value (full precision, without thousands separator), `Y` copies as displayed (rounded, with separators, later unit).
 - **Dialogs via the `Interaction` port** (`tui/interaction.rs`): in production `Modals`, in tests `Headless`. Only that way is the key path testable without a terminal.
 
+## CLI surface
+
+calcli is a flat, single-purpose program: no subcommands. `clap` (derive) parses `--demo` and produces `-h`/`--help` and `-V`/`--version`; clap's own exit code 2 for a usage error is left alone. Errors print as `calcli: error: …` on stderr. `tests/cli.rs` drives the binary as a real process and checks exit code, stdout and stderr separately.
+
+There is no CLI *output* layer and therefore no `sparcli`: nothing is printed on the happy path, because the TUI owns the terminal.
+
 ## Later extensions (keep the architecture open, do not implement now)
 
-CLI layer (`cli/` + `sparcli`), GUI. calcli is deliberately TUI-only: there are no subcommands and no `println!` output – `sparcli` is therefore not included.
+GUI. Should calcli ever grow commands that print, `sparcli` plus `clibase`'s `cli/output.rs` bridge is the intended path.
 
 ## Error messages are behavior
 

@@ -7,7 +7,6 @@
 //! All values are full-precision `f64`s; rounding lives in
 //! [`crate::domain::format`].
 
-use crate::domain::errors::{AppError, Result};
 use crate::domain::evaluator::Evaluator;
 use crate::domain::expression::{self, Statement};
 use crate::domain::format::{
@@ -15,12 +14,8 @@ use crate::domain::format::{
 };
 use crate::domain::history::{History, HistoryEntry, LineResult};
 use crate::domain::quantity::Quantity;
-use crate::domain::units;
 use crate::domain::variables::VariableStore;
-
-/// Names that may not be used as variables because they collide with the
-/// previous-answer keyword or meval's built-in constants.
-const RESERVED_NAMES: &[&str] = &["ans", "pi", "e"];
+use crate::services::eval::{self, eval_expression, reject_name};
 
 /// The outcome of submitting a line, for the caller's status line.
 #[derive(Debug, Clone, PartialEq)]
@@ -88,6 +83,35 @@ impl CalcService {
     ///
     /// An errored line is still recorded (with its message) so the user can
     /// edit or delete it; its `ans` is `None` for the line below.
+    ///
+    /// # Examples
+    ///
+    /// Each line may continue from the previous answer through `ans`:
+    ///
+    /// ```
+    /// use calcli::config::Config;
+    /// use calcli::domain::evaluator::MevalEvaluator;
+    /// use calcli::domain::history::History;
+    /// use calcli::domain::quantity::Quantity;
+    /// use calcli::domain::variables::VariableStore;
+    /// use calcli::services::CalcService;
+    ///
+    /// let mut service = CalcService::new(
+    ///     Box::new(MevalEvaluator::new()),
+    ///     Config::default().format_settings(),
+    ///     History::new(100),
+    ///     VariableStore::new(),
+    /// );
+    ///
+    /// service.submit("10");
+    /// let outcome = service.submit("ans * 3");
+    ///
+    /// assert_eq!(
+    ///     outcome.value.as_ref().map(Quantity::display_value),
+    ///     Some(30.0),
+    /// );
+    /// assert_eq!(service.history().len(), 2);
+    /// ```
     pub fn submit(&mut self, input: &str) -> SubmitOutcome {
         let ans = self.history.last_value();
         let (value, error) = self.evaluate_line(input, ans);
@@ -123,8 +147,7 @@ impl CalcService {
         if len == 0 {
             return 0;
         }
-        let target =
-            (index as isize + delta).clamp(0, len as isize - 1) as usize;
+        let target = step_index(index, delta, len);
         if target != index {
             self.history.swap(index, target);
             self.recompute(index.min(target));
@@ -149,8 +172,10 @@ impl CalcService {
         self.history.clear();
     }
 
-    /// Re-evaluates the entire history, regenerating values and errors under the
-    /// current settings. Used on startup so restored entries are consistent with
+    /// Re-evaluates the entire history, regenerating values and errors under
+    /// the
+    /// current settings. Used on startup so restored entries are consistent
+    /// with
     /// the active settings (and with each other).
     pub fn recompute_all(&mut self) {
         self.recompute(0);
@@ -279,14 +304,15 @@ impl CalcService {
     }
 
     /// Re-evaluates the history from `start`, threading `ans` and applying
-    /// variable assignments in order. Borrows the engine, variables and settings
+    /// variable assignments in order. Borrows the engine, variables and
+    /// settings
     /// disjointly from the history so the closure can mutate the store.
     fn recompute(&mut self, start: usize) {
         let evaluator = self.evaluator.as_ref();
         let variables = &mut self.variables;
         let settings = &self.settings;
         self.history.recompute_from(start, |input, ans| {
-            evaluate_line(evaluator, variables, settings, input, ans)
+            eval::evaluate_line(evaluator, variables, settings, input, ans)
         });
     }
 
@@ -297,7 +323,7 @@ impl CalcService {
         input: &str,
         ans: Option<Quantity>,
     ) -> LineResult {
-        evaluate_line(
+        eval::evaluate_line(
             self.evaluator.as_ref(),
             &mut self.variables,
             &self.settings,
@@ -307,299 +333,26 @@ impl CalcService {
     }
 }
 
-/// Evaluates one line: a `=name` save, a `name = expr` assignment or a plain
-/// expression. Variable assignments mutate `variables`; reserved and malformed
-/// names are rejected with a message rather than a panic.
-fn evaluate_line(
-    evaluator: &dyn Evaluator,
-    variables: &mut VariableStore,
-    settings: &FormatSettings,
-    input: &str,
-    ans: Option<Quantity>,
-) -> LineResult {
-    // Strip the inline comment; the full input is kept by the history.
-    let code = expression::strip_comment(input);
-    if code.trim().is_empty() {
-        return (None, None);
-    }
-    match expression::classify(code) {
-        Statement::SaveAns(name) => save_ans(variables, &name, ans),
-        Statement::Assign { name, expr } => {
-            assign(evaluator, variables, settings, &name, &expr, ans)
-        }
-        Statement::Expression(expr) => {
-            match eval_expression(evaluator, variables, settings, &expr, ans) {
-                Ok(value) => (Some(value), None),
-                Err(error) => (None, Some(error.to_string())),
-            }
-        }
-    }
-}
-
-/// Stores the previous answer in `name`, or reports why it cannot.
-fn save_ans(
-    variables: &mut VariableStore,
-    name: &str,
-    ans: Option<Quantity>,
-) -> LineResult {
-    if let Some(error) = reject_name(name) {
-        return (None, Some(error.to_string()));
-    }
-    match ans {
-        Some(value) => {
-            variables.set(name, value.clone());
-            (Some(value), None)
-        }
-        None => (None, Some(AppError::NoAnswerToSave.to_string())),
-    }
-}
-
-/// Evaluates `expr` and stores the result in `name`, or reports the error.
-fn assign(
-    evaluator: &dyn Evaluator,
-    variables: &mut VariableStore,
-    settings: &FormatSettings,
-    name: &str,
-    expr: &str,
-    ans: Option<Quantity>,
-) -> LineResult {
-    if let Some(error) = reject_name(name) {
-        return (None, Some(error.to_string()));
-    }
-    match eval_expression(evaluator, variables, settings, expr, ans) {
-        Ok(value) => {
-            variables.set(name, value.clone());
-            (Some(value), None)
-        }
-        Err(error) => (None, Some(error.to_string())),
-    }
-}
-
-/// Evaluates `expr` into a [`Quantity`].
+/// Steps `index` by `delta` within a list of `len` entries, clamped to its
+/// ends. `len` must not be zero.
 ///
-/// A sole `ans` or variable reference returns the stored quantity verbatim (so
-/// its unit and full precision survive). Otherwise the line is routed: a
-/// unit-free expression goes to meval (preserving functions and the angle
-/// mode), while anything involving units - a conversion, a unit literal, or
-/// arithmetic on unit-bearing values - goes to rink (see [`needs_units`]).
-fn eval_expression(
-    evaluator: &dyn Evaluator,
-    variables: &VariableStore,
-    settings: &FormatSettings,
-    expr: &str,
-    ans: Option<Quantity>,
-) -> Result<Quantity> {
-    let trimmed = expr.trim();
-    if trimmed == "ans" {
-        return ans.ok_or(AppError::NoPreviousAnswer);
-    }
-    if let Some(quantity) = variables.get(trimmed) {
-        return Ok(quantity.clone());
-    }
-    if needs_units(expr, variables, ans.as_ref()) {
-        return eval_with_rink(variables, settings, expr, ans);
-    }
-    let value = eval_with_meval(evaluator, variables, settings, expr, ans)?;
-    Ok(Quantity::dimensionless(value))
-}
-
-/// Whether `expr` must be evaluated by the units engine rather than meval.
-///
-/// True when it converts (`->`/` to `), continues from a unit-bearing `ans`,
-/// references a unit-bearing variable, or contains a unit symbol. The constants
-/// `pi`/`e` and `ans` are never units, and defined variables are handled by the
-/// unit-bearing checks above, so they are excluded from the token scan.
-fn needs_units(
-    expr: &str,
-    variables: &VariableStore,
-    ans: Option<&Quantity>,
-) -> bool {
-    if split_conversion(expr).is_some() {
-        return true;
-    }
-    let leading_operator =
-        expr.trim_start().starts_with(['+', '-', '*', '/', '^']);
-    if ans.is_some_and(|a| !a.is_dimensionless())
-        && (leading_operator || expression::references(expr, "ans"))
-    {
-        return true;
-    }
-    for (name, value) in variables.iter() {
-        if !value.is_dimensionless() && expression::references(expr, name) {
-            return true;
-        }
-    }
-    expr.split(|c: char| !c.is_ascii_alphabetic())
-        .filter(|token| !token.is_empty())
-        .any(|token| {
-            !matches!(token, "pi" | "e" | "ans")
-                && variables.get(token).is_none()
-                && units::is_unit(token)
-        })
-}
-
-/// Splits a conversion `<source> -> <unit>` (or `<source> to <unit>`).
-fn split_conversion(expr: &str) -> Option<(&str, &str)> {
-    if let Some((source, target)) = expr.split_once("->") {
-        return Some((source, target));
-    }
-    expr.split_once(" to ")
-}
-
-/// Evaluates a unit-bearing `expr` through rink, substituting `ans` and any
-/// referenced variables as unit literals first.
-///
-/// The display unit is chosen so the value reads as the user expects:
-/// - a conversion (`… -> X`) is shown in the typed target `X` (rink reports the
-///   value already in `X`);
-/// - a simple quantity literal (`50 kN`) keeps the unit the user wrote;
-/// - otherwise rink's unit name is shortened to symbols (`meter^2` → `m^2`,
-///   `kilonewton` → `kN`), re-expressing the SI base value via
-///   [`units::scale_of`]. The user can pin any other unit with a `->`.
-fn eval_with_rink(
-    variables: &VariableStore,
-    settings: &FormatSettings,
-    expr: &str,
-    ans: Option<Quantity>,
-) -> Result<Quantity> {
-    let prepared = substitute_for_units(variables, settings, expr, ans)?;
-
-    // A conversion: rink validates the dimensions and reports the value in the
-    // target, so the typed target symbol is pinned directly.
-    if let Some((_, target)) = split_conversion(expr) {
-        let target = target.trim();
-        if !target.is_empty() {
-            let (value, _) = units::eval(&prepared)?;
-            return Ok(Quantity::new(value, target.to_string()));
-        }
-    }
-
-    let (base_value, unit) = units::eval(&prepared)?;
-    let Some(unit) = unit else {
-        return Ok(Quantity::dimensionless(base_value));
+/// `index` and `delta` both cross the API boundary from the UI, so the step is
+/// computed with `checked_*`: a plain `index as isize + delta` panics in debug
+/// and wraps in release once the values grow past `isize`. Anything that does
+/// not fit saturates at the end it was heading for, which is what clamping
+/// would have done anyway.
+fn step_index(index: usize, delta: isize, len: usize) -> usize {
+    let last = len - 1;
+    let Ok(current) = isize::try_from(index) else {
+        return last;
     };
-    // Choose the display unit: the user's own symbol for a plain
-    // `<number> <unit>` literal, else rink's name shortened to symbols. The
-    // value is in SI base units, so scale it into that display unit (the
-    // shortened forms stay rink-parseable, so `scale_of` resolves them).
-    let display_unit = simple_literal_unit(expr)
-        .unwrap_or_else(|| units::prettify_unit(&unit));
-    let value = base_value / units::scale_of(&display_unit)?;
-    Ok(Quantity::new(value, display_unit))
-}
-
-/// Substitutes `ans` and referenced variables into `expr` as rink literals,
-/// applying the light units preprocessing and `ans`-on-leading-operator rule.
-fn substitute_for_units(
-    variables: &VariableStore,
-    settings: &FormatSettings,
-    expr: &str,
-    ans: Option<Quantity>,
-) -> Result<String> {
-    let mut prepared = prepare_units_expr(expr, settings.decimal_separator);
-    let leading_operator =
-        prepared.trim_start().starts_with(['+', '-', '*', '/', '^']);
-    if leading_operator && ans.is_some() {
-        prepared = format!("ans {prepared}");
-    }
-    if expression::references(&prepared, "ans") {
-        let value = ans.as_ref().ok_or(AppError::NoPreviousAnswer)?;
-        prepared = expression::substitute_identifier_with(
-            &prepared,
-            "ans",
-            &quantity_literal(value),
-        );
-    }
-    for (name, value) in variables.iter() {
-        if expression::references(&prepared, name) {
-            prepared = expression::substitute_identifier_with(
-                &prepared,
-                name,
-                &quantity_literal(value),
-            );
-        }
-    }
-    Ok(prepared)
-}
-
-/// The unit symbol of a plain `<number> <unit>` literal (e.g. `"kN"` for
-/// `50 kN`), or `None` when `expr` is anything more complex.
-fn simple_literal_unit(expr: &str) -> Option<String> {
-    let (head, last) = expr.trim().rsplit_once(char::is_whitespace)?;
-    let head = head.trim();
-    let number_chars = |c: char| {
-        c.is_ascii_digit() || matches!(c, '.' | 'e' | 'E' | '+' | '-')
+    let Some(target) = current.checked_add(delta) else {
+        return if delta < 0 { 0 } else { last };
     };
-    if head.is_empty()
-        || !head.chars().all(number_chars)
-        || !head.chars().any(|c| c.is_ascii_digit())
-        || !units::is_unit(last)
-    {
-        return None;
+    match usize::try_from(target) {
+        Ok(target) => target.min(last),
+        Err(_) => 0,
     }
-    Some(last.to_string())
-}
-
-/// Renders a quantity as a rink-parseable literal (e.g. `(50 kN)`), for
-/// substituting `ans`/variables into a unit expression.
-fn quantity_literal(quantity: &Quantity) -> String {
-    match quantity.unit_symbol() {
-        Some(symbol) => format!("({} {})", quantity.display_value(), symbol),
-        None => format!("({})", quantity.display_value()),
-    }
-}
-
-/// Light preprocessing for the rink path: `**`→`^` and, in comma-decimal mode,
-/// the decimal mark to `.`. Spaces are kept (rink needs them between a number
-/// and its unit) and SI prefixes are left for rink to resolve.
-fn prepare_units_expr(expr: &str, decimal_separator: char) -> String {
-    let replaced = expr.replace("**", "^");
-    if decimal_separator == ',' {
-        replaced.replace(',', ".")
-    } else {
-        replaced
-    }
-}
-
-/// Evaluates a dimensionless numeric expression with meval, substituting `ans`
-/// and dimensionless variables (the router guarantees no units are involved).
-fn eval_with_meval(
-    evaluator: &dyn Evaluator,
-    variables: &VariableStore,
-    settings: &FormatSettings,
-    expr: &str,
-    ans: Option<Quantity>,
-) -> Result<f64> {
-    let prepared = expression::preprocess(expr, settings.decimal_separator);
-    let ans_number = ans
-        .as_ref()
-        .filter(|a| a.is_dimensionless())
-        .map(Quantity::display_value);
-
-    let prepared = expression::prepend_ans(&prepared, ans_number);
-    let mut prepared = expression::substitute_ans(&prepared, ans_number);
-    for (name, value) in variables.iter() {
-        if expression::references(&prepared, name) && value.is_dimensionless() {
-            prepared = expression::substitute_identifier(
-                &prepared,
-                name,
-                value.display_value(),
-            );
-        }
-    }
-    // The evaluator already speaks `AppError`; there is nothing to translate.
-    evaluator.eval(&prepared, settings.angle_mode)
-}
-
-/// The reason `name` cannot be a variable, or `None` when it can.
-fn reject_name(name: &str) -> Option<AppError> {
-    if !expression::is_valid_var_name(name) {
-        return Some(AppError::InvalidVariableName(name.to_string()));
-    }
-    if RESERVED_NAMES.contains(&name) {
-        return Some(AppError::ReservedName(name.to_string()));
-    }
-    None
 }
 
 #[cfg(test)]
@@ -651,6 +404,28 @@ mod tests {
     /// A dimensionless value preview, for the preview assertions.
     fn val(value: f64) -> Preview {
         Preview::Value(Quantity::dimensionless(value))
+    }
+
+    /// `index` and `delta` arrive from the UI, so the step must survive values
+    /// a plain `index as isize + delta` would panic or wrap on.
+    #[test]
+    fn stepping_an_index_clamps_instead_of_overflowing() {
+        assert_eq!(step_index(0, -1, 3), 0);
+        assert_eq!(step_index(2, 1, 3), 2);
+        assert_eq!(step_index(1, 1, 3), 2);
+        assert_eq!(step_index(1, -1, 3), 0);
+        assert_eq!(step_index(0, isize::MAX, 3), 2);
+        assert_eq!(step_index(2, isize::MIN, 3), 0);
+        assert_eq!(step_index(usize::MAX, 1, 3), 2);
+    }
+
+    /// An empty history has no index to move to, and must not underflow on the
+    /// `len - 1` that clamping needs.
+    #[test]
+    fn moving_an_entry_in_an_empty_history_is_a_no_op() {
+        let mut service = service();
+        assert_eq!(service.move_entry(0, 1), 0);
+        assert_eq!(service.history().len(), 0);
     }
 
     #[test]

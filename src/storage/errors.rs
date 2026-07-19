@@ -1,9 +1,13 @@
 //! Infrastructure errors raised by the persistence adapters.
 //!
-//! These name files, I/O and TOML. They never leave the storage layer: the
-//! service boundary converts them into
+//! These name files, I/O and TOML. They reach no layer *above* the service:
+//! the service boundary converts them into
 //! [`AppError::Storage`](crate::domain::errors::AppError::Storage), flattening
 //! the cause chain into the message so no detail is lost.
+//!
+//! The one place that sees them unwrapped is the composition root, which loads
+//! the state before any service exists and logs an unreadable file rather than
+//! failing the startup.
 
 use std::io;
 
