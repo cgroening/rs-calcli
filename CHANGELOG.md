@@ -4,7 +4,7 @@ All notable changes to calcli are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-07-19
 
 ### Added
 
@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **A long variable name or value is truncated with `…`.** The rows were handed to the list widget unclipped, so an overlong entry was cut off mid-glyph with nothing to say it had been. The settings rows are clipped the same way.
 - Errors now print as `calcli: error: …` on stderr, and a failure to open the log file reports as `calcli: warning: …` rather than being swallowed.
-- `ratada` 0.3 → 0.4. The chord grammar – parsing a `[keys]` value, rendering a key for the footer, merging the defaults with the overrides and reporting a shadowed binding – now comes from the toolkit instead of being kept in-tree; the action catalog, the scopes and the context-aware lookup stay in calcli. Nothing changes for the user: `[keys]` understands the same chords as before, plus the new `backtab` and `insert` tokens.
+- `ratada` 0.3 → 0.5. The chord grammar – parsing a `[keys]` value, rendering a key for the footer, merging the defaults with the overrides and reporting a shadowed binding – now comes from the toolkit instead of being kept in-tree; the action catalog, the scopes and the context-aware lookup stay in calcli. Nothing changes for the user: `[keys]` understands the same chords as before, plus the new `backtab` and `insert` tokens.
 - `Shift` is now significant on a non-character key: `Shift+↑` no longer steers the history, because `up` and `shift+up` are two distinct chords. A character is unaffected – its `Shift` still lives in the case (`D` is Shift+D).
 
 ### Fixed

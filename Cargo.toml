@@ -1,6 +1,6 @@
 [package]
 name = "calcli"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 # MSRV: `ratada` relies on let-chains, stabilized in Rust 1.88.
 rust-version = "1.88"
@@ -13,7 +13,7 @@ homepage = "https://github.com/cgroening/rs-calcli"
 documentation = "https://docs.rs/calcli"
 keywords = ["calculator", "tui", "terminal", "units", "cli"]
 categories = ["command-line-utilities", "mathematics"]
-exclude = ["images/", "screenshots/", ".github/"]
+exclude = ["images/", "screenshots/", ".github/", "todo.md"]
 
 [package.metadata.docs.rs]
 all-features = true
