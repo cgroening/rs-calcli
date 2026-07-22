@@ -38,8 +38,8 @@ const CALCLI_COLORS: ThemeColors = ThemeColors {
     accent: Color::hex("#82e38e"),
     foreground: Color::hex("#e5e5e5"),
     background: Color::Default,
-    header: Color::hex("#0e0c12"),
-    footer: Color::hex("#0e0c12"),
+    header: Color::hex("#161C17"),
+    footer: Color::hex("#141814"),
     // A step above `surface`, the raised plane a toolkit widget lifts onto.
     // calcli draws no such widget today, so nothing on screen wears it yet.
     panel: Color::hex("#1b1926"),
