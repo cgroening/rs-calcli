@@ -109,7 +109,7 @@ With `confirm_quit = true` the soft quit (`q`, `:q`) asks first; `Ctrl+Q` never 
 | `Esc` | clear the input |
 | `Ctrl+C` / `X` / `V` | copy / cut / paste in the input |
 
-Typing an identifier opens a suggestion dropdown of matching variables, built-in functions and constants. `↑` / `↓` pick a suggestion, `Enter` / `Tab` / `→` accept it, and `Esc` closes the dropdown. While it is open `↑` steers it rather than the history, so use `PgUp` to browse the history from there.
+Typing an identifier opens a suggestion dropdown of matching variables, built-in functions and constants. Nothing is selected until you pick: `↑` / `↓` (or `Ctrl+J` / `Ctrl+K`, `Shift+Tab`) pick a suggestion, `Tab` accepts the picked one or else the first, `Enter` accepts only a picked one (otherwise it evaluates as usual), `←` / `→` close the dropdown and move the caret, and `Esc` closes the dropdown. While it is open `↑` steers it rather than the history, so use `PgUp` to browse the history from there.
 
 ### Calc – browsing the history (after `↑`)
 

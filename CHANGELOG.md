@@ -4,6 +4,12 @@ All notable changes to calcli are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **The suggestion dropdown follows blink.cmp (ratada 0.6).** Nothing is preselected; `Tab` accepts the picked suggestion or else the first one, `Enter` accepts only a picked one, `Ctrl+J`/`Ctrl+K` and `Shift+Tab` move the pick, and `→` now closes the dropdown and moves the caret instead of accepting. A name that matches the typed text exactly is listed too, and every match is reachable: up to eight show at once and the rest scroll.
+
 ## [0.4.0] - 2026-07-19
 
 ### Added
