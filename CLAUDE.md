@@ -24,26 +24,17 @@ The only deliberate exception: `tui/text_edit.rs`. calcli highlights its input c
 
 The input runs in `EditMode::Wrapped`: an expression is one logical line that merely wraps for display, so `Enter` stays calcli's (it submits) and a paste can never put a `\n` into the buffer.
 
-## Mandatory rules (from the Style Guide, Rust §2.4)
+## Project rules
 
 - **Edition 2024**, MSRV 1.88 (`ratada` uses let-chains); `rustfmt` (default + `group_imports=StdExternalCrate`, `imports_granularity=Module`); `cargo clippy --all-targets -- -D warnings` must be clean.
-- **Error handling:** `Result<T, E>` + `?`. `thiserror` for domain errors (one error type per domain), `anyhow` only at the binary edge (`main`). **No `unwrap()`**; `expect()` only in provably infallible places (with a rationale). No `panic!` in the normal flow. Input errors → status line, never a crash.
-- **Types:** `enum`s instead of magic strings, `struct`s instead of loose tuples. Sensible `derive`s; `Option<T>` instead of sentinel values.
-- **Functions:** small (SRP), one level of abstraction (SLAP), at most two levels of nesting with early return, ≤ 3 parameters (otherwise bundle in a struct), no flag arguments. Prefer pure functions.
-- **Names:** predicates `is_`/`has_`/`can_`; methods = verbs, types = nouns; no `Manager`/`Helper`/`Data`.
-- **Docs:** `///` above every public item (first line = one-sentence summary, prose instead of `# Arguments` lists); `//!` module doc at the top.
-- **Line length ≤ 80** in `.rs`; 4 spaces; trailing commas in multi-line lists; LF; file ends with exactly one newline.
-- **Dash:** never use the em dash. In code files `-` (hyphen), in `.md` files `–` (en dash).
-- **Logging** via `log` (file sink in `util/logging`), never `println!`/ `eprintln!` for diagnostics. Visible TUI output is not logging.
-- **Tests** are always shipped along (`#[cfg(test)] mod tests` per file, integration tests in `tests/`); test names describe the expected behavior; fakes over mocks. **Run `cargo test` after every change.**
-- **Minimize dependencies**; agree on new crates beforehand. Document established crates with `// https://crates.io/crates/<name>` above the `use`.
+- **Logging** goes to the file sink in `util/logging`; input errors go to the status line, never a crash.
 - **Maintain the changelog:** enter every user-visible change in `CHANGELOG.md` (format "Keep a Changelog") under `## [Unreleased]`; on a release, version/date the section and bump the `version` in `Cargo.toml` per SemVer.
 - **Shortcut changes:** adjust `keymap/catalog.rs`, then update the key tables in `README.md` and the `[keys]` block in `examples/config.toml` accordingly. Footer and help follow automatically, and `tests/docs_in_sync.rs` fails if the two documents do not.
 - **On-disk formats backward compatible:** new fields `#[serde(default)]`. `tests/legacy_data.rs` guards both files against real fixtures. They fail differently, so different rules apply:
   - `state.toml` must keep *reading* **every form ever written**, even if it is no longer *written*. `main` treats an unreadable `state.toml` as an empty session – a rejected file silently discards settings, variables and the entire history.
   - `config.toml` **may lose a key**: `deny_unknown_fields` rejects the file, `main` prints the cause chain and aborts. Nothing is lost, the message names the line. This is a user-visible, breaking change and belongs in the `CHANGELOG.md` – not a refactoring.
 
-## TUI conventions (Style Guide §1.7 and §2.4.11)
+## TUI conventions
 
 Panel layout from `clibase`: tinted header panel with **only** brand + tab bar, raised content area, tinted status band (the active settings on the left, the transient status message on the right), below it a blank line and the background-less shortcut hints. The app frame draws **no** border lines; `BorderType::Rounded` applies only to individual widgets (input field, modals). Everything is drawn via `tui::appframe::render_frame` (SSOT).
 
@@ -52,7 +43,6 @@ Panel layout from `clibase`: tinted header panel with **only** brand + tab bar, 
 - **Never hardcode `Ctrl+Q` anywhere** – neither in the footer nor in the help nor as a `[keys]` binding. It belongs to the toolkit, as does `F1` (toggle hints).
 - **Modals block** (`ratada::modal`) and dim the *live* view. A `Ctrl+Q` in a modal quits the app (`Answer::ForcedQuit`).
 - **`Ctrl+C` stays the clipboard** and is never assigned as quit.
-- Transient status line (errors never crash), `…` truncation, scrollbar on overflow, cyclic list navigation, Unicode/ASCII glyphs per config.
 
 ## Modal keys: scopes
 
