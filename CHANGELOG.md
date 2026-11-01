@@ -6,9 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-01
+
 ### Changed
 
 - **The suggestion dropdown follows blink.cmp (ratada 0.6).** Nothing is preselected; `Tab` accepts the picked suggestion or else the first one, `Enter` accepts only a picked one, `Ctrl+J`/`Ctrl+K` and `Shift+Tab` move the pick, and `→` now closes the dropdown and moves the caret instead of accepting. A name that matches the typed text exactly is listed too, and every match is reachable: up to eight show at once and the rest scroll.
+- The header and footer panels of the default theme have a faint green tint (`#0b0f0c` and `#0a0d0b`) instead of the violet-black `#0e0c12`, matching the green accent. They stay darker than the content surface and the input field, so the content still reads as a raised plane.
+- `ratada` 0.5 → 0.6, which brings the new dropdown behaviour above.
 
 ## [0.4.0] - 2026-07-19
 

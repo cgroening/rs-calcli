@@ -38,8 +38,8 @@ const CALCLI_COLORS: ThemeColors = ThemeColors {
     accent: Color::hex("#82e38e"),
     foreground: Color::hex("#e5e5e5"),
     background: Color::Default,
-    header: Color::hex("#161C17"),
-    footer: Color::hex("#141814"),
+    header: Color::hex("#0b0f0c"),
+    footer: Color::hex("#0a0d0b"),
     // A step above `surface`, the raised plane a toolkit widget lifts onto.
     // calcli draws no such widget today, so nothing on screen wears it yet.
     panel: Color::hex("#1b1926"),
@@ -206,8 +206,8 @@ mod tests {
     fn the_palette_keeps_the_calcli_accent_and_panel_bands() {
         let palette = Config::default().palette();
         assert_eq!(palette.accent, Color::hex("#82e38e"));
-        assert_eq!(palette.header, Color::hex("#0e0c12"));
-        assert_eq!(palette.footer, Color::hex("#0e0c12"));
+        assert_eq!(palette.header, Color::hex("#0b0f0c"));
+        assert_eq!(palette.footer, Color::hex("#0a0d0b"));
         assert_eq!(palette.surface, Color::hex("#16141d"));
     }
 
