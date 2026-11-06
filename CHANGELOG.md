@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-06
+
 ### Changed
 
 - **`[highlight]` moved to `[appearance.colors.highlight]`.** The old table still loads, so calcli starts, but it is no longer read: a warning names the new place. Move your token colours over once. A `[themes.<name>.highlight]` table now carries them per theme.
