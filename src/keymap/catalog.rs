@@ -295,4 +295,11 @@ pub(super) const ACTIONS: &[ActionSpec] = &[
         scope: Scope::Settings,
         default_keys: &["right", "enter"],
     },
+    ActionSpec {
+        action: Action::ResetValue,
+        config_name: "reset_value",
+        description: "reset colour",
+        scope: Scope::Settings,
+        default_keys: &["backspace", "del"],
+    },
 ];

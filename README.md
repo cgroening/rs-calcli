@@ -19,9 +19,9 @@ Type an expression, press Enter, keep going. The previous result is available as
 - **Lenient input** – spaces, `_` and the non-decimal one of `.`/`,` are accepted as thousands separators; SI prefixes like `3.3k`, `100u` are expanded. Function arguments use `;` (e.g. `max(1;2)`).
 - **Clipboard** – `y` copies the plain, full-precision value (no grouping); `Y` copies it as shown (rounded, grouped).
 - **Growing input** – long expressions soft-wrap and the input field grows (up to `input_max_lines`); `↑/↓` move the caret across the wrapped lines, `↑` on the first line enters the history.
-- **Syntax highlighting** – functions, constants, operators (bold), numbers, defined variables, units, parentheses and `ans` are coloured in the input, the history and while editing. Colours are configurable in the `[highlight]` table; unknown identifiers stay neutral.
+- **Syntax highlighting** – functions, constants, operators (bold), numbers, defined variables, units, parentheses and `ans` are coloured in the input, the history and while editing. Colours are configurable in the `[appearance.colors.highlight]` table; unknown identifiers stay neutral.
 - **Live feedback** – as you type, the input border shows a dim `= value` preview while the expression is valid and a subtle warning marker when it looks complete but won't parse (silent while still mid-typing). Toggle with `live_feedback` in the config.
-- **Settings view** – every display setting on one editable list (`←`/`→` steps the focused value, applied live), including the theme and the glyph set. The function keys keep working from every view.
+- **Settings view** – every display setting on one editable list (`←`/`→` steps the focused value, applied live), including the theme and the glyph set, followed by every colour: the palette, the dim amount, and the highlight and completion groups. `Enter` on a colour opens the colour chooser, `Backspace` resets it to the theme's value; a colour or the dim amount is written to `config.toml` (comments are kept) and marked `*` when set there. The function keys keep working from every view.
 - **Shortcut hints** – the footer lists the current view's keys, grouped, with a closing `Global` group. `F1` hides the whole band (the state is remembered); `F12` or `?` opens the scrollable, fuzzy-filtered help overlay.
 - **Persistence** – settings, variables, history and the interface state (active view, theme, glyphs, hint visibility) are saved on exit and restored next time (settings restore is configurable). Writes are atomic, and a `state.toml` from any older calcli still loads.
 
@@ -183,12 +183,15 @@ Backed by [`meval`](https://crates.io/crates/meval): `+ - * / ^` (and `**` for p
 | Section | Holds |
 | --- | --- |
 | top level | notation, decimals, angle mode, separators, max history, the `restore_last_settings` / `live_feedback` / `confirm_delete` / `confirm_quit` switches and the history-list options |
-| `[appearance]` | the theme name, the glyph set and per-colour palette overrides |
-| `[highlight]` | the eight syntax-highlight token colours |
-| `[themes.<name>]` | your own themes, selectable by name |
+| `[appearance]` | the theme name, the glyph set, `dim_amount` and per-colour palette overrides (`[appearance.colors]`, including `dim` for dimmed text) |
+| `[appearance.colors.highlight]` | the eight syntax-highlight token colours (before 0.6 `[highlight]`, now ignored with a warning) |
+| `[appearance.colors.completion]` | the suggestion text of the autocomplete dropdown |
+| `[themes.<name>]` | your own themes, selectable by name; a `[themes.<name>.highlight]` table carries highlight colours per theme |
 | `[keys]` | the key bound to each action |
 
-Environment variables override the file for a single run: `CALCLI_DECIMALS`, `CALCLI_DECIMAL_SEPARATOR`, `CALCLI_THEME`, `CALCLI_ACCENT`, `CALCLI_GLYPHS`, `CALCLI_CONFIRM_QUIT`, `CALCLI_CONFIRM_DELETE`.
+Environment variables override the file for a single run: `CALCLI_DECIMALS`, `CALCLI_DECIMAL_SEPARATOR`, `CALCLI_THEME`, `CALCLI_ACCENT`, `CALCLI_GLYPHS`, `CALCLI_DIM_AMOUNT`, `CALCLI_CONFIRM_QUIT`, `CALCLI_CONFIRM_DELETE`.
+
+Every colour comes from the theme; the code holds none outside `src/config/app_colors.rs` (`tests/theme_only_colours.rs` keeps it so). Colours take `#rrggbb`, `#rgb`, `rgb(r, g, b)`, a colour name, a terminal colour `ansi:<name>` or `default`.
 
 A `config.toml` written for calcli 0.2 (a flat `[theme]` table and a top-level `glyphs` key) still loads unchanged; its colours are mapped onto the sections above. The 0.2 shape is deprecated but supported.
 

@@ -6,9 +6,12 @@
 //! configuration. [`Config::default`] is the single source of truth for those
 //! defaults.
 
+pub mod app_colors;
 pub mod appearance;
+pub mod color_groups;
 pub mod highlight;
 pub mod loader;
+pub mod writer;
 
 use std::collections::BTreeMap;
 
@@ -19,40 +22,13 @@ pub use crate::config::highlight::HighlightColors;
 pub use crate::config::loader::load_config;
 use crate::domain::format::{AngleMode, FormatSettings, Notation};
 use crate::keymap::Keymap;
-use crate::theme::{
-    Color, ColorOverrides, Palette, ThemeColors, ThemeRegistry,
-};
+use crate::theme::{ColorOverrides, Palette, ThemeColors, ThemeRegistry};
 
 /// Default number of fractional digits.
 const DEFAULT_DECIMALS: usize = 3;
 
 /// Default maximum number of history entries kept.
 const DEFAULT_MAX_HISTORY: usize = 500;
-
-/// calcli's own theme: the long-standing green accent over the panel bands the
-/// clibase layout expects. The header/footer bands sit a step darker than the
-/// content surface, so the content reads as a raised plane; `background` stays
-/// [`Color::Default`] so the outer fill and the shortcut hints show the
-/// terminal's own background.
-const CALCLI_COLORS: ThemeColors = ThemeColors {
-    accent: Color::hex("#82e38e"),
-    foreground: Color::hex("#e5e5e5"),
-    background: Color::Default,
-    header: Color::hex("#0b0f0c"),
-    footer: Color::hex("#0a0d0b"),
-    // A step above `surface`, the raised plane a toolkit widget lifts onto.
-    // calcli draws no such widget today, so nothing on screen wears it yet.
-    panel: Color::hex("#1b1926"),
-    surface: Color::hex("#16141d"),
-    border: Color::hex("#3e3e3e"),
-    // The border the focused input box draws. It has to hold its contrast
-    // against the brighter focused fill, where a fixed `border` would fade out.
-    border_focus: Color::hex("#4a7c60"),
-    success: Color::hex("#a3c995"),
-    warning: Color::hex("#ded483"),
-    error: Color::hex("#e06c6c"),
-    info: Color::hex("#7fb3d4"),
-};
 
 /// The resolved configuration.
 #[derive(Debug, Clone, PartialEq)]
@@ -87,8 +63,11 @@ pub struct Config {
     pub appearance: Appearance,
     /// User-defined themes from `[themes.<name>]`, layered over the built-ins.
     pub themes: Vec<(String, ThemeColors)>,
-    /// Syntax-highlight colours from `[highlight]`.
+    /// The syntax-highlight colors of the configured theme, resolved from the
+    /// `highlight` color group.
     pub highlight: HighlightColors,
+    /// The app color groups of every theme and of `[appearance.colors]`.
+    pub color_groups: color_groups::ColorGroups,
     /// Per-action key overrides from `[keys]`, resolved by [`crate::keymap`].
     pub keys: BTreeMap<String, Vec<String>>,
     /// Whether destructive actions ask for confirmation first.
@@ -97,6 +76,10 @@ pub struct Config {
     /// always quits at once. Defaults to `false`, matching calcli's long-
     /// standing behaviour of quitting without a prompt.
     pub confirm_quit: bool,
+    /// The file the config was loaded from, where the settings view writes
+    /// its changes; `None` for a config that came from no file (defaults,
+    /// tests), which the view then does not save.
+    pub path: Option<std::path::PathBuf>,
 }
 
 impl Default for Config {
@@ -117,9 +100,11 @@ impl Default for Config {
             appearance: Appearance::default(),
             themes: Vec::new(),
             highlight: HighlightColors::default(),
+            color_groups: color_groups::ColorGroups::default(),
             keys: BTreeMap::new(),
             confirm_delete: true,
             confirm_quit: false,
+            path: None,
         }
     }
 }
@@ -156,7 +141,10 @@ impl Config {
     /// configured under `[themes.<name>]` (which may replace either).
     pub fn theme_registry(&self) -> ThemeRegistry {
         ThemeRegistry::builtin()
-            .with_custom([(CALCLI_THEME.to_string(), CALCLI_COLORS)])
+            .with_custom([(
+                CALCLI_THEME.to_string(),
+                app_colors::CALCLI_COLORS,
+            )])
             .with_custom(self.themes.iter().cloned())
     }
 
@@ -189,11 +177,22 @@ pub enum ConfigError {
         #[source]
         source: toml::de::Error,
     },
+
+    /// The config file could not be edited: it is not valid TOML, the edit
+    /// would leave it invalid, or it could not be written.
+    #[error("cannot update config file {path}: {reason}")]
+    Write {
+        /// Path of the config file.
+        path: String,
+        /// What went wrong.
+        reason: String,
+    },
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::theme::Color;
 
     #[test]
     fn the_calcli_theme_is_registered_and_selected_by_default() {
@@ -291,7 +290,7 @@ mod tests {
         // The other default survives the partial override.
         assert_eq!(
             config.palette().input_bg_active,
-            Color::hex(appearance::DEFAULT_INPUT_BG_ACTIVE),
+            crate::theme::parse_color("#262336").expect("valid preset"),
         );
     }
 

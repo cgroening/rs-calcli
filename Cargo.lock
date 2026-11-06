@@ -182,6 +182,7 @@ dependencies = [
  "serde",
  "thiserror 2.0.18",
  "toml",
+ "toml_edit",
  "unicode-width",
 ]
 
@@ -1274,7 +1275,7 @@ checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 
 [[package]]
 name = "ratada"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "chrono",
  "clipboard-win",

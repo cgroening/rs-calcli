@@ -6,6 +6,7 @@
 //! user is editing deliberately at that moment.
 
 use crate::config::Config;
+use crate::config::appearance::MAX_DIM_AMOUNT;
 use crate::config::loader::parse_separator;
 use crate::theme::GlyphVariant;
 
@@ -25,6 +26,13 @@ pub fn apply_env(config: &mut Config) {
         && !value.is_empty()
     {
         config.appearance.colors.insert("accent".to_string(), value);
+    }
+    if let Some(amount) = std::env::var("CALCLI_DIM_AMOUNT")
+        .ok()
+        .and_then(|value| value.parse::<u8>().ok())
+        .filter(|amount| *amount <= MAX_DIM_AMOUNT)
+    {
+        config.appearance.dim_amount = amount;
     }
     if let Ok(value) = std::env::var("CALCLI_THEME")
         && !value.is_empty()

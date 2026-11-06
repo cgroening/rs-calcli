@@ -36,7 +36,8 @@ use ratada::theme::{
 use ratada::{Flow, Screen, Tui, modal, quit, shortcut_hints, style};
 use ratatui::Frame;
 
-use crate::config::Config;
+use crate::config::color_groups::ColorGroups;
+use crate::config::{Config, HighlightColors};
 use crate::domain::completion;
 use crate::domain::quantity::Quantity;
 use crate::keymap::{Context, Keymap};
@@ -62,6 +63,14 @@ pub struct App {
     /// The `[appearance.colors]` overrides, re-applied whenever the theme
     /// changes so a runtime theme switch never loses them.
     overrides: BTreeMap<String, String>,
+    /// The app colour groups (`[appearance.colors.<group>]` and per theme).
+    color_groups: ColorGroups,
+    /// How far dimmed coloured text darkens while the palette's `dim` is set
+    /// (`[appearance] dim_amount`, percent).
+    dim_amount: u8,
+    /// Where the settings view saves colour changes; `None` keeps them for
+    /// this session only.
+    config_path: Option<std::path::PathBuf>,
     keymap: Keymap,
     highlight: Highlight,
     confirm_delete: bool,
@@ -108,6 +117,9 @@ impl App {
             registry,
             theme: config.appearance.theme.clone(),
             overrides: config.appearance.colors.clone(),
+            color_groups: config.color_groups.clone(),
+            dim_amount: config.appearance.dim_amount,
+            config_path: config.path.clone(),
             keymap: config.keymap(),
             highlight: Highlight::new(&config.highlight),
             confirm_delete: config.confirm_delete,
@@ -144,6 +156,7 @@ impl App {
             );
         }
         app.restore(ui);
+        app.apply_dim();
         // Only the soft quit is questioned; `Ctrl+Q` stays the unconditional
         // escape hatch either way.
         quit::set_confirm(if config.confirm_quit {
@@ -169,6 +182,16 @@ impl App {
     fn set_skin(&mut self, skin: Skin) {
         self.skin = skin;
         self.install_quit_guard();
+        self.apply_dim();
+    }
+
+    /// Draws the terminal `DIM` attribute in the palette's `dim` colour (left
+    /// to the terminal while it is unset).
+    pub(super) fn apply_dim(&self) {
+        ratada::dim::apply_palette(
+            &self.skin.palette,
+            f32::from(self.dim_amount) / 100.0,
+        );
     }
 
     /// Switches the active theme by name, falling back to the default when the
@@ -188,6 +211,10 @@ impl App {
         let base = self.registry.resolve(&name);
         let mut skin = self.skin;
         skin.palette = Palette::resolve(base, &self.color_overrides());
+        self.highlight = Highlight::new(&HighlightColors::resolve(
+            &self.color_groups,
+            &name,
+        ));
         self.set_skin(skin);
         self.theme = name;
     }

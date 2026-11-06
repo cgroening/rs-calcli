@@ -194,6 +194,8 @@ pub enum Action {
     PreviousValue,
     /// Move the focused setting to its next value.
     NextValue,
+    /// Reset the focused colour to the theme's value.
+    ResetValue,
 }
 
 impl Action {

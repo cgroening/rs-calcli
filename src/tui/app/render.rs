@@ -85,12 +85,13 @@ impl App {
             .map(|entry| self.styles_of(&entry.input))
             .collect();
         let input_styles = self.styles_of(&self.input);
-        // Colour of the autocomplete suggestion text. Set a concrete RGB here.
-        let completion_text = Color::Rgb(190, 190, 190);
+        // The suggestion text, `[appearance.colors.completion] text`.
+        let completion_text =
+            self.color_groups.color(&self.theme, "completion", "text");
         let completion = self.autocomplete.lines(
             &self.skin.palette,
             0,
-            style::fg(completion_text),
+            ratada::style::fg(completion_text),
         );
 
         let view = CalcView {
@@ -196,6 +197,10 @@ impl App {
             settings: self.service.settings(),
             glyphs: self.skin.glyphs.variant,
             theme: &self.theme,
+            palette: &self.skin.palette,
+            overrides: &self.overrides,
+            groups: &self.color_groups,
+            dim_amount: self.dim_amount,
         }
     }
 }

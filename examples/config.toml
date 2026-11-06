@@ -81,12 +81,17 @@ theme = "calcli"
 # Glyph set: "unicode" or "ascii".
 glyphs = "unicode"
 
+# How far coloured dimmed text darkens (percent) while the colour `dim` is set.
+dim_amount = 40
+
 # Per-colour overrides on top of the selected theme. The names are the palette's
 # own; anything else is ignored with a warning. Values are "#rrggbb", "#rgb",
-# "rgb(r, g, b)" or a colour name.
+# "rgb(r, g, b)", a colour name, a terminal colour "ansi:<name>" (e.g.
+# "ansi:green", "ansi:dark_gray") or "default". The Settings view edits every
+# one of them and writes the change here, keeping the comments.
 #
 #   accent  accent_dim  accent_vivid
-#   foreground  foreground_dim  foreground_muted
+#   foreground  foreground_dim  foreground_muted  dim
 #   background  header  footer  panel  surface
 #   selection  cursor  input_bg  input_bg_active  border  border_focus
 #   success  warning  error  info
@@ -114,13 +119,20 @@ input_bg_active = "#262336"
 # surface; this keeps the accent hue at the weight of the focused input field.
 selection = "#354440"
 
+# Text the terminal would dim (key hints, secondary text). Left empty, the
+# terminal dims it as it always has.
+#
+# dim = "#6e6a78"
+
 
 ## Syntax highlighting ########################################################
 
 # Token colours for the expression (input, history and in-place editing).
 # Operators are always rendered bold, parentheses dim, `ans` underlined and
-# comments italic; these set the colour only.
-[highlight]
+# comments italic; these set the colour only. A [themes.<name>.highlight] table
+# carries them per theme. (Before 0.4 this was [highlight], which is now
+# ignored with a warning.)
+[appearance.colors.highlight]
 function = "#78c2b3"
 constant = "#7c94ff"
 operator = "#fe7057"
@@ -129,6 +141,10 @@ variable = "#b27cde"
 ans = "#7dcfff"
 comment = "#67c1e5"
 unit = "#ff79c6"
+
+# The suggestion text of the input's autocomplete dropdown.
+[appearance.colors.completion]
+text = "#bebebe"
 
 
 ## Custom themes ##############################################################
@@ -224,3 +240,4 @@ unit = "#ff79c6"
 # # The settings list
 # prev_value = "left"
 # next_value = ["right", "enter"]
+# reset_value = ["backspace", "del"]

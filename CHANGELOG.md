@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **`[highlight]` moved to `[appearance.colors.highlight]`.** The old table still loads, so calcli starts, but it is no longer read: a warning names the new place. Move your token colours over once. A `[themes.<name>.highlight]` table now carries them per theme.
+
+### Added
+
+- Every colour comes from the theme. The autocomplete suggestion text is `[appearance.colors.completion] text` (default unchanged); calcli's own theme, its palette presets and both groups live in `src/config/app_colors.rs`, the only file with colour values (`tests/theme_only_colours.rs`).
+- The palette colour `dim` draws dimmed text in a chosen colour; `[appearance] dim_amount` (env `CALCLI_DIM_AMOUNT`) sets how far coloured dimmed text darkens. Colours accept `ansi:<name>` and `default`.
+- The Settings view lists every palette colour, the dim amount and the highlight and completion colours. `Enter` opens the colour chooser, the new action `reset_value` (`backspace`, `del`) resets a colour; changes are written to `config.toml`, keeping its comments (new `config::writer`, dependency `toml_edit`).
+
 ## [0.5.0] - 2026-11-01
 
 ### Changed

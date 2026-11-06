@@ -13,8 +13,10 @@
 use std::io;
 
 use ratada::quit::QuitKind;
+use ratada::theme::Color;
 use ratada::{
     ModalSignal, Screen, Tui, command_palette, finder, help, modal, quit,
+    swatches,
 };
 use ratatui::Frame;
 
@@ -52,6 +54,19 @@ pub enum Selection {
     /// The user dismissed the picker without choosing.
     None,
     /// The user pressed `Ctrl+Q` inside the picker: quit at once.
+    ForcedQuit,
+}
+
+/// How the colour chooser ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorPick {
+    /// The user chose this colour.
+    Color(Color),
+    /// The user removed the colour (back to the theme's value).
+    Cleared,
+    /// The user dismissed the chooser.
+    Cancelled,
+    /// The user pressed `Ctrl+Q` inside the chooser: quit at once.
     ForcedQuit,
 }
 
@@ -97,6 +112,18 @@ pub trait Interaction {
         items: &[command_palette::CommandItem<'_>],
     ) -> io::Result<Selection>;
 
+    /// Opens the colour chooser titled `title` on `initial`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error when the chooser cannot be drawn.
+    fn pick_color(
+        &mut self,
+        app: &App,
+        title: &str,
+        initial: Option<Color>,
+    ) -> io::Result<ColorPick>;
+
     /// Whether a soft quit may proceed, asking first when configured to.
     fn may_quit(&mut self, app: &App) -> bool;
 }
@@ -124,6 +151,35 @@ fn answer_of(signal: ModalSignal<bool>) -> Answer {
 }
 
 impl Interaction for Modals<'_> {
+    fn pick_color(
+        &mut self,
+        app: &App,
+        title: &str,
+        initial: Option<Color>,
+    ) -> io::Result<ColorPick> {
+        let signal = swatches::color_chooser_with(
+            self.tui,
+            app.skin(),
+            title,
+            initial,
+            swatches::ChooserOptions {
+                clearable: true,
+                picker_unless_listed: true,
+            },
+            |frame| app.render(frame),
+        )?;
+        Ok(match signal {
+            ModalSignal::Value(swatches::ColorChoice::Color(color)) => {
+                ColorPick::Color(color)
+            }
+            ModalSignal::Value(swatches::ColorChoice::Cleared) => {
+                ColorPick::Cleared
+            }
+            ModalSignal::Cancelled => ColorPick::Cancelled,
+            ModalSignal::Quit => ColorPick::ForcedQuit,
+        })
+    }
+
     fn confirm(&mut self, app: &App, prompt: &str) -> io::Result<Answer> {
         let signal = modal::confirm(self.tui, app.skin(), prompt, |frame| {
             app.render(frame);
@@ -203,6 +259,8 @@ mod headless {
         pub selection: Selection,
         /// How many dialogs were opened.
         pub asked: usize,
+        /// What the colour chooser returns.
+        pub color: ColorPick,
     }
 
     impl Headless {
@@ -212,6 +270,7 @@ mod headless {
                 answer: Answer::Yes,
                 selection: Selection::None,
                 asked: 0,
+                color: ColorPick::Cancelled,
             }
         }
 
@@ -221,6 +280,7 @@ mod headless {
                 answer: Answer::No,
                 selection: Selection::None,
                 asked: 0,
+                color: ColorPick::Cancelled,
             }
         }
 
@@ -230,7 +290,14 @@ mod headless {
                 answer: Answer::ForcedQuit,
                 selection: Selection::ForcedQuit,
                 asked: 0,
+                color: ColorPick::ForcedQuit,
             }
+        }
+
+        /// Makes the colour chooser return `pick`.
+        pub fn choosing_color(mut self, pick: ColorPick) -> Self {
+            self.color = pick;
+            self
         }
 
         /// Makes a fuzzy picker choose the item at `index`.
@@ -268,6 +335,16 @@ mod headless {
         ) -> io::Result<Selection> {
             self.asked += 1;
             Ok(self.selection)
+        }
+
+        fn pick_color(
+            &mut self,
+            _app: &App,
+            _title: &str,
+            _initial: Option<Color>,
+        ) -> io::Result<ColorPick> {
+            self.asked += 1;
+            Ok(self.color)
         }
 
         fn may_quit(&mut self, _app: &App) -> bool {

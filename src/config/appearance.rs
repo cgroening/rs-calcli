@@ -2,38 +2,11 @@
 
 use std::collections::BTreeMap;
 
+use crate::config::app_colors::DEFAULT_PALETTE_OVERRIDES;
 use crate::theme::GlyphVariant;
 
 /// The theme calcli ships with and selects by default.
 pub const CALCLI_THEME: &str = "calcli";
-
-/// Block-cursor colour (a muted red), distinct from the accent and selection.
-/// Lives here rather than in `super::CALCLI_COLORS` because `cursor` is a
-/// palette colour derived by `ratada`, not a theme base colour.
-pub const DEFAULT_CURSOR_COLOR: &str = "#d65c5c";
-
-/// The input field's resting and focused fills.
-///
-/// `ratada` derives these by lightening `surface`, which assumes a mid-dark
-/// surface. calcli's surface is near-black, so the derivation overshoots and
-/// the field ends up brighter than its own border.
-///
-/// At rest the field sits *below* the content surface, receding into it. With
-/// the keyboard it lifts clearly above the surface, so where you are typing is
-/// never in doubt - but it stays below the border drawn around it. Both are
-/// overridable under `[appearance.colors]`.
-pub const DEFAULT_INPUT_BG: &str = "#100e15";
-/// The fill of the input field while it holds the keyboard, lifted clearly
-/// above the content surface so the caret's location is never in doubt.
-pub const DEFAULT_INPUT_BG_ACTIVE: &str = "#262336";
-
-/// The tint behind the selected history entry and the selected list row.
-///
-/// `ratada` derives it as `surface.mix(accent, 0.35)`, which on calcli's
-/// near-black surface lands brighter than the border and shouts. This keeps the
-/// accent tint - the row still reads as "here" - at roughly the weight of the
-/// focused input field. Overridable under `[appearance.colors]`.
-pub const DEFAULT_SELECTION_COLOR: &str = "#354440";
 
 /// User-facing appearance configuration. `theme` names a theme (built-in,
 /// calcli's own, or one defined under `[themes.<name>]`); `colors` holds
@@ -48,22 +21,29 @@ pub struct Appearance {
     pub colors: BTreeMap<String, String>,
     /// The glyph variant (Unicode icons or an ASCII fallback).
     pub glyphs: GlyphVariant,
+    /// How far dimmed colored text is darkened while the palette color `dim`
+    /// is set, in percent (0 = unchanged, 100 = black).
+    pub dim_amount: u8,
 }
+
+/// The default of [`Appearance::dim_amount`].
+pub const DEFAULT_DIM_AMOUNT: u8 = 40;
+
+/// The largest [`Appearance::dim_amount`].
+pub const MAX_DIM_AMOUNT: u8 = 100;
 
 impl Default for Appearance {
     fn default() -> Self {
         Appearance {
             theme: CALCLI_THEME.to_string(),
-            colors: BTreeMap::from([
-                ("cursor".to_string(), DEFAULT_CURSOR_COLOR.to_string()),
-                ("input_bg".to_string(), DEFAULT_INPUT_BG.to_string()),
-                (
-                    "input_bg_active".to_string(),
-                    DEFAULT_INPUT_BG_ACTIVE.to_string(),
-                ),
-                ("selection".to_string(), DEFAULT_SELECTION_COLOR.to_string()),
-            ]),
+            colors: DEFAULT_PALETTE_OVERRIDES
+                .iter()
+                .map(|(name, value)| {
+                    ((*name).to_string(), (*value).to_string())
+                })
+                .collect(),
             glyphs: GlyphVariant::default(),
+            dim_amount: DEFAULT_DIM_AMOUNT,
         }
     }
 }
@@ -72,13 +52,22 @@ impl Default for Appearance {
 mod tests {
     use super::*;
 
+    /// calcli's preset for the palette color `name`.
+    fn preset(name: &str) -> &'static str {
+        DEFAULT_PALETTE_OVERRIDES
+            .iter()
+            .find(|(key, _)| *key == name)
+            .map(|(_, value)| *value)
+            .expect("a preset color")
+    }
+
     #[test]
     fn defaults_select_the_calcli_theme_and_a_red_cursor() {
         let appearance = Appearance::default();
         assert_eq!(appearance.theme, CALCLI_THEME);
         assert_eq!(
             appearance.colors.get("cursor").map(String::as_str),
-            Some(DEFAULT_CURSOR_COLOR),
+            Some(preset("cursor")),
         );
         assert_eq!(appearance.glyphs, GlyphVariant::Unicode);
     }
@@ -88,7 +77,7 @@ mod tests {
         let appearance = Appearance::default();
         assert_eq!(
             appearance.colors.get("selection").map(String::as_str),
-            Some(DEFAULT_SELECTION_COLOR),
+            Some(preset("selection")),
         );
     }
 
@@ -97,11 +86,11 @@ mod tests {
         let appearance = Appearance::default();
         assert_eq!(
             appearance.colors.get("input_bg").map(String::as_str),
-            Some(DEFAULT_INPUT_BG),
+            Some(preset("input_bg")),
         );
         assert_eq!(
             appearance.colors.get("input_bg_active").map(String::as_str),
-            Some(DEFAULT_INPUT_BG_ACTIVE),
+            Some(preset("input_bg_active")),
         );
     }
 }

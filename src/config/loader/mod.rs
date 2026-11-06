@@ -25,16 +25,15 @@ mod validate;
 use std::io;
 use std::path::Path;
 
-use crate::config::appearance::Appearance;
+use crate::config::appearance::{Appearance, MAX_DIM_AMOUNT};
+use crate::config::color_groups::{ColorGroups, ColorMap};
 use crate::config::highlight::HighlightColors;
 use crate::config::loader::legacy::RawLegacyTheme;
-use crate::config::loader::raw::{
-    ColorMap, RawAppearance, RawConfig, RawHighlight,
-};
-use crate::config::loader::validate::{report_unknown, unknown_color_names};
+use crate::config::loader::raw::{RawAppearance, RawConfig};
+use crate::config::loader::validate::{SplitColors, report_unknown};
 use crate::config::{Config, ConfigError};
 use crate::theme::{
-    Color, GlyphVariant, ThemeColors, parse_color as parse_theme_color,
+    GlyphVariant, ThemeColors, parse_color as parse_theme_color,
 };
 use crate::util::paths;
 
@@ -75,6 +74,7 @@ pub fn load_from(path: &Path) -> Result<Config, ConfigError> {
         }
     };
     apply_env(&mut config);
+    config.path = Some(path.to_path_buf());
     Ok(config)
 }
 
@@ -99,8 +99,28 @@ fn parse(content: &str, path: &Path) -> Result<Config, ConfigError> {
 /// Merges a raw config over the defaults.
 fn merge(raw: RawConfig) -> Config {
     let defaults = Config::default();
-    report_unknown(&unknown_color_names(&raw));
     let legacy = raw.theme.unwrap_or_default();
+    if raw.highlight.is_some() {
+        log::warn!(
+            "[highlight] moved to [appearance.colors.highlight], ignoring it"
+        );
+    }
+    let mut appearance = raw.appearance.unwrap_or_default();
+    let mut colors =
+        SplitColors::new(std::mem::take(&mut appearance.colors), raw.themes);
+    report_unknown(&colors.unknown());
+    add_legacy_highlight(&mut colors.override_groups, &legacy);
+    let appearance = merge_appearance(
+        appearance,
+        std::mem::take(&mut colors.palette),
+        raw.glyphs,
+        &legacy,
+        defaults.appearance,
+    );
+    let color_groups = ColorGroups {
+        themes: colors.theme_groups,
+        overrides: colors.override_groups,
+    };
     Config {
         notation: raw.notation.unwrap_or(defaults.notation),
         decimals: raw.decimals.unwrap_or(defaults.decimals),
@@ -132,27 +152,20 @@ fn merge(raw: RawConfig) -> Config {
             .max(1),
         confirm_delete: raw.confirm_delete.unwrap_or(defaults.confirm_delete),
         confirm_quit: raw.confirm_quit.unwrap_or(defaults.confirm_quit),
-        appearance: merge_appearance(
-            raw.appearance.unwrap_or_default(),
-            raw.glyphs,
-            &legacy,
-            defaults.appearance,
-        ),
-        highlight: merge_highlight(
-            raw.highlight.unwrap_or_default(),
-            &legacy,
-            defaults.highlight,
-        ),
-        themes: raw
+        highlight: HighlightColors::resolve(&color_groups, &appearance.theme),
+        appearance,
+        color_groups,
+        themes: colors
             .themes
-            .into_iter()
-            .map(|(name, colors)| (name, theme_colors(&colors)))
+            .iter()
+            .map(|(name, theme)| (name.clone(), theme_colors(theme)))
             .collect(),
         keys: raw
             .keys
             .into_iter()
             .map(|(action, binding)| (action, binding.into_keys()))
             .collect(),
+        path: None,
     }
 }
 
@@ -160,6 +173,7 @@ fn merge(raw: RawConfig) -> Config {
 /// chrome colours and the legacy top-level `glyphs`. The new keys win.
 fn merge_appearance(
     raw: RawAppearance,
+    overrides: ColorMap,
     legacy_glyphs: Option<GlyphVariant>,
     legacy: &RawLegacyTheme,
     defaults: Appearance,
@@ -168,45 +182,44 @@ fn merge_appearance(
     for (name, value) in legacy::chrome_colors(legacy) {
         colors.insert(name.to_string(), value);
     }
-    colors.extend(raw.colors);
+    colors.extend(overrides);
     Appearance {
         theme: raw.theme.unwrap_or(defaults.theme),
         colors,
         glyphs: raw.glyphs.or(legacy_glyphs).unwrap_or(defaults.glyphs),
+        dim_amount: dim_amount(raw.dim_amount, defaults.dim_amount),
     }
 }
 
-/// Merges `[highlight]` over the defaults, falling back to the legacy
-/// `[theme].*_color` keys where the new section is silent.
-fn merge_highlight(
-    raw: RawHighlight,
+/// The configured `dim_amount`, or `default` when it is absent or above 100
+/// (reported).
+fn dim_amount(raw: Option<u8>, default: u8) -> u8 {
+    match raw {
+        Some(amount) if amount <= MAX_DIM_AMOUNT => amount,
+        Some(amount) => {
+            log::warn!(
+                "appearance.dim_amount = {amount} is above {MAX_DIM_AMOUNT}, \
+                 using {default}"
+            );
+            default
+        }
+        None => default,
+    }
+}
+
+/// Adds the legacy (0.2) `[theme].*_color` token colors to the `highlight`
+/// override group where `[appearance.colors.highlight]` is silent.
+fn add_legacy_highlight(
+    groups: &mut std::collections::BTreeMap<String, ColorMap>,
     legacy: &RawLegacyTheme,
-    defaults: HighlightColors,
-) -> HighlightColors {
-    let pick = |new: Option<String>, old: &Option<String>, fallback: Color| {
-        new.or_else(|| old.clone())
-            .and_then(|value| parse_highlight_color(&value))
-            .unwrap_or(fallback)
-    };
-    HighlightColors {
-        function: pick(raw.function, &legacy.function_color, defaults.function),
-        constant: pick(raw.constant, &legacy.constant_color, defaults.constant),
-        operator: pick(raw.operator, &legacy.operator_color, defaults.operator),
-        number: pick(raw.number, &legacy.number_color, defaults.number),
-        variable: pick(raw.variable, &legacy.variable_color, defaults.variable),
-        ans: pick(raw.ans, &legacy.ans_color, defaults.ans),
-        comment: pick(raw.comment, &legacy.comment_color, defaults.comment),
-        unit: pick(raw.unit, &legacy.unit_color, defaults.unit),
+) {
+    for (key, value) in legacy::highlight_colors(legacy) {
+        groups
+            .entry("highlight".to_string())
+            .or_default()
+            .entry(key.to_string())
+            .or_insert(value);
     }
-}
-
-/// Parses a highlight colour, logging and ignoring an unusable value.
-fn parse_highlight_color(value: &str) -> Option<Color> {
-    let color = parse_theme_color(value);
-    if color.is_none() {
-        log::warn!("invalid highlight colour {value:?}, keeping the default");
-    }
-    color
 }
 
 /// Converts a raw custom theme colour table into [`ThemeColors`].
@@ -238,6 +251,7 @@ mod tests {
     use super::*;
     use crate::config::CALCLI_THEME;
     use crate::domain::format::{AngleMode, Notation};
+    use crate::theme::Color;
     use crate::theme::Palette;
 
     /// The complete `config.toml` calcli 0.2 shipped as `examples/config.toml`.
@@ -371,15 +385,22 @@ mod tests {
     }
 
     #[test]
-    fn the_new_highlight_section_wins_over_the_legacy_theme_table() {
+    fn the_highlight_group_wins_over_the_legacy_theme_table() {
         let raw = "\
 [theme]
 function_color = \"#111111\"
-[highlight]
+[appearance.colors.highlight]
 function = \"#222222\"
 ";
         let config = config_from_str(raw).unwrap();
         assert_eq!(config.highlight.function, Color::hex("#222222"));
+    }
+
+    #[test]
+    fn the_old_highlight_table_still_loads_but_is_not_read() {
+        let config =
+            config_from_str("[highlight]\nfunction = \"#222222\"\n").unwrap();
+        assert_eq!(config.highlight, HighlightColors::default());
     }
 
     #[test]
@@ -416,8 +437,10 @@ accent = \"#222222\"
 
     #[test]
     fn an_invalid_highlight_colour_keeps_the_default() {
-        let config =
-            config_from_str("[highlight]\nfunction = \"nope\"\n").unwrap();
+        let config = config_from_str(
+            "[appearance.colors.highlight]\nfunction = \"nope\"\n",
+        )
+        .unwrap();
         assert_eq!(
             config.highlight.function,
             HighlightColors::default().function,
@@ -490,7 +513,8 @@ accent = \"#222222\"
     /// The `(section, name)` pairs `content` reports as unusable.
     fn unknown(content: &str) -> Vec<(String, String)> {
         let raw: RawConfig = toml::from_str(content).expect("valid toml");
-        unknown_color_names(&raw)
+        let colors = raw.appearance.map(|a| a.colors).unwrap_or_default();
+        SplitColors::new(colors, raw.themes).unknown()
     }
 
     #[test]

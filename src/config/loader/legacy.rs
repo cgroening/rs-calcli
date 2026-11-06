@@ -47,3 +47,22 @@ pub(super) fn chrome_colors(
     .into_iter()
     .filter_map(|(name, value)| Some((name, value.clone()?)))
 }
+
+/// The legacy `[theme].*_color` token colours, as keys of the `highlight`
+/// color group.
+pub(super) fn highlight_colors(
+    legacy: &RawLegacyTheme,
+) -> impl Iterator<Item = (&'static str, String)> + '_ {
+    [
+        ("function", &legacy.function_color),
+        ("constant", &legacy.constant_color),
+        ("operator", &legacy.operator_color),
+        ("number", &legacy.number_color),
+        ("variable", &legacy.variable_color),
+        ("ans", &legacy.ans_color),
+        ("comment", &legacy.comment_color),
+        ("unit", &legacy.unit_color),
+    ]
+    .into_iter()
+    .filter_map(|(name, value)| Some((name, value.clone()?)))
+}

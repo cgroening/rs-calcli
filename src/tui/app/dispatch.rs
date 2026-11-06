@@ -127,7 +127,7 @@ impl App {
             Context::Edit => self.apply_edit_action(action),
             Context::History => self.apply_history_action(action, io),
             Context::Variables => self.apply_variables_action(action, io),
-            Context::Settings => Ok(self.apply_settings_action(action)),
+            Context::Settings => self.apply_settings_action(action, io),
         }
     }
 

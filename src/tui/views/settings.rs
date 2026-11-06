@@ -6,14 +6,16 @@
 //! than the only way in.
 
 use std::cell::Cell;
+use std::collections::BTreeMap;
 
-use ratada::theme::{GlyphVariant, Skin};
+use ratada::theme::{Color, GlyphVariant, Palette, Skin};
 use ratada::{list, markdown, style};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
 
+use crate::config::color_groups::{APP_COLOR_GROUPS, ColorGroups};
 use crate::domain::format::{AngleMode, FormatSettings, Notation};
 
 /// The thousands separators the view cycles through, and how each reads.
@@ -39,15 +41,27 @@ pub enum Row {
     Glyphs,
     /// The colour theme.
     Theme,
+    /// A palette colour, by its `[appearance.colors]` name.
+    Color(&'static str),
+    /// How far dimmed coloured text darkens while `dim` is set.
+    DimAmount,
+    /// An app colour, by its `[appearance.colors.<group>]` table and key.
+    GroupColor {
+        /// The group's table name.
+        group: &'static str,
+        /// The colour's key in the group.
+        key: &'static str,
+    },
 }
 
 /// The largest number of fractional digits the view allows.
 const MAX_DECIMALS: usize = 12;
 
 impl Row {
-    /// Every row, in display order.
-    pub fn all() -> [Row; 8] {
-        [
+    /// Every row, in display order: the display settings, every palette
+    /// colour (the dim amount after `dim`), then the app colour groups.
+    pub fn all() -> Vec<Row> {
+        let mut rows = vec![
             Row::Notation,
             Row::Decimals,
             Row::AngleMode,
@@ -56,7 +70,22 @@ impl Row {
             Row::ThousandsSeparator,
             Row::Glyphs,
             Row::Theme,
-        ]
+        ];
+        for name in Palette::KEYS {
+            rows.push(Row::Color(name));
+            if *name == "dim" {
+                rows.push(Row::DimAmount);
+            }
+        }
+        for group in APP_COLOR_GROUPS {
+            for (key, _) in group.colors {
+                rows.push(Row::GroupColor {
+                    group: group.name,
+                    key,
+                });
+            }
+        }
+        rows
     }
 
     /// The row at `index`, clamped to the last row.
@@ -66,7 +95,17 @@ impl Row {
     }
 
     /// The label shown in the left column.
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> String {
+        match self {
+            Row::Color(name) => name.to_string(),
+            Row::DimAmount => "dim_amount".to_string(),
+            Row::GroupColor { group, key } => format!("{group}.{key}"),
+            other => other.setting_label().to_string(),
+        }
+    }
+
+    /// The label of a display setting.
+    fn setting_label(self) -> &'static str {
         match self {
             Row::Notation => "Notation",
             Row::Decimals => "Decimals",
@@ -76,7 +115,13 @@ impl Row {
             Row::ThousandsSeparator => "Thousands mark",
             Row::Glyphs => "Glyphs",
             Row::Theme => "Theme",
+            Row::Color(_) | Row::DimAmount | Row::GroupColor { .. } => "",
         }
+    }
+
+    /// Whether the row edits a colour (opened in the colour chooser).
+    pub fn is_color(self) -> bool {
+        matches!(self, Row::Color(_) | Row::GroupColor { .. })
     }
 }
 
@@ -89,6 +134,14 @@ pub struct Values<'a> {
     pub glyphs: GlyphVariant,
     /// The active theme name.
     pub theme: &'a str,
+    /// The live palette.
+    pub palette: &'a Palette,
+    /// The `[appearance.colors]` overrides, to mark the colours set in config.
+    pub overrides: &'a BTreeMap<String, String>,
+    /// The app colour groups.
+    pub groups: &'a ColorGroups,
+    /// `[appearance] dim_amount`, in percent.
+    pub dim_amount: u8,
 }
 
 impl Values<'_> {
@@ -107,8 +160,60 @@ impl Values<'_> {
             }
             Row::Glyphs => glyphs_label(self.glyphs).to_string(),
             Row::Theme => self.theme.to_string(),
+            Row::DimAmount => format!("{}%", self.dim_amount),
+            Row::Color(_) | Row::GroupColor { .. } => {
+                let color = self.color_of(row).unwrap_or(Color::Default);
+                let marker = if self.is_overridden(row) { " *" } else { "" };
+                format!("{}{marker}", color_label(color))
+            }
         }
     }
+
+    /// The colour a colour row shows; `None` for any other row.
+    pub fn color_of(&self, row: Row) -> Option<Color> {
+        match row {
+            Row::Color(name) => self.palette.get(name),
+            Row::GroupColor { group, key } => {
+                Some(self.groups.color(self.theme, group, key))
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether the config sets the colour of `row`.
+    fn is_overridden(&self, row: Row) -> bool {
+        match row {
+            Row::Color(name) => self.overrides.contains_key(name),
+            Row::GroupColor { group, key } => {
+                self.groups.is_overridden(group, key)
+            }
+            _ => false,
+        }
+    }
+}
+
+/// How a colour reads: its hex or `ansi:` token, or `terminal`.
+fn color_label(color: Color) -> String {
+    match color {
+        Color::Default => "terminal".to_string(),
+        other => other.to_hex(),
+    }
+}
+
+/// The block drawn as a colour swatch.
+const SWATCH: &str = "\u{2588}\u{2588} ";
+
+/// The step of one `←`/`→` press on the dim amount, in percent.
+const DIM_AMOUNT_STEP: u8 = 5;
+
+/// The dim amount `delta` steps after `current`, kept in 0-100.
+pub fn step_dim_amount(current: u8, delta: isize) -> u8 {
+    let stepped = if delta < 0 {
+        current.saturating_sub(DIM_AMOUNT_STEP)
+    } else {
+        current.saturating_add(DIM_AMOUNT_STEP)
+    };
+    stepped.min(100)
 }
 
 /// Everything the settings view renders from.
@@ -191,28 +296,30 @@ pub fn render(
     view: &SettingsView,
 ) -> usize {
     let palette = &skin.palette;
-    let width = Row::all()
-        .iter()
-        .map(|row| row.label().len())
-        .max()
-        .unwrap_or(0);
+    let all = Row::all();
+    let width = all.iter().map(|row| row.label().len()).max().unwrap_or(0);
 
-    let rows: Vec<Line<'static>> = Row::all()
+    let rows: Vec<Line<'static>> = all
         .iter()
         .map(|&row| {
             let value = view.values.of(row);
-            let spans = vec![
+            let mut spans = vec![
                 Span::styled(
                     format!(" {:width$}  ", row.label(), width = width),
                     style::secondary(palette),
                 ),
                 Span::styled("\u{2039} ", style::muted(palette)),
+            ];
+            if let Some(color) = view.values.color_of(row) {
+                spans.push(Span::styled(SWATCH, style::fg(color)));
+            }
+            spans.extend([
                 Span::styled(
                     value,
                     style::fg(palette.accent).add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(" \u{203a}", style::muted(palette)),
-            ];
+            ]);
             Line::from(markdown::clip_spans(
                 spans,
                 area.width as usize,
@@ -227,7 +334,7 @@ pub fn render(
         skin,
         list::ListView {
             rows,
-            selected: view.selected.min(Row::all().len() - 1),
+            selected: view.selected.min(all.len() - 1),
             offset: view.offset,
         },
     )
@@ -247,7 +354,28 @@ mod tests {
 
     #[test]
     fn an_out_of_range_index_clamps_to_the_last_row() {
-        assert_eq!(Row::at(99), Row::Theme);
+        assert_eq!(Row::at(999), *Row::all().last().unwrap());
+    }
+
+    #[test]
+    fn every_palette_colour_and_group_colour_has_a_row() {
+        let all = Row::all();
+        for name in Palette::KEYS {
+            assert!(all.contains(&Row::Color(name)), "{name}");
+        }
+        assert!(all.contains(&Row::GroupColor {
+            group: "highlight",
+            key: "function"
+        }));
+        let dim = all.iter().position(|row| *row == Row::Color("dim"));
+        assert_eq!(all.get(dim.unwrap() + 1), Some(&Row::DimAmount));
+    }
+
+    #[test]
+    fn the_dim_amount_steps_in_fives_within_0_to_100() {
+        assert_eq!(step_dim_amount(40, 1), 45);
+        assert_eq!(step_dim_amount(2, -1), 0);
+        assert_eq!(step_dim_amount(98, 1), 100);
     }
 
     #[test]

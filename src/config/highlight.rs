@@ -1,20 +1,13 @@
 //! Syntax-highlight colours for the expression tokens.
 //!
 //! These are calcli's own: `ratada`'s [`Palette`](crate::theme::Palette) has no
-//! equivalent for "the colour of a function name", so they live in their own
-//! `[highlight]` config section rather than in `[appearance.colors]`.
+//! equivalent for "the colour of a function name", so they are the color
+//! group `highlight` (`[appearance.colors.highlight]`, defaults in
+//! `config/app_colors.rs`).
 
+use crate::config::appearance::CALCLI_THEME;
+use crate::config::color_groups::ColorGroups;
 use crate::theme::Color;
-
-/// Default token colours, matching the nox.nvim palette.
-const DEFAULT_FUNCTION: Color = Color::hex("#78c2b3");
-const DEFAULT_CONSTANT: Color = Color::hex("#7c94ff");
-const DEFAULT_OPERATOR: Color = Color::hex("#fe7057");
-const DEFAULT_NUMBER: Color = Color::hex("#e5cb49");
-const DEFAULT_VARIABLE: Color = Color::hex("#b27cde");
-const DEFAULT_ANS: Color = Color::hex("#7dcfff");
-const DEFAULT_COMMENT: Color = Color::hex("#67c1e5");
-const DEFAULT_UNIT: Color = Color::hex("#ff79c6");
 
 /// The resolved colour of every highlighted token kind.
 ///
@@ -40,18 +33,28 @@ pub struct HighlightColors {
     pub unit: Color,
 }
 
-impl Default for HighlightColors {
-    fn default() -> Self {
+impl HighlightColors {
+    /// The highlight colors of `groups` under `theme`.
+    #[must_use]
+    pub fn resolve(groups: &ColorGroups, theme: &str) -> Self {
+        let color = |key: &str| groups.color(theme, "highlight", key);
         HighlightColors {
-            function: DEFAULT_FUNCTION,
-            constant: DEFAULT_CONSTANT,
-            operator: DEFAULT_OPERATOR,
-            number: DEFAULT_NUMBER,
-            variable: DEFAULT_VARIABLE,
-            ans: DEFAULT_ANS,
-            comment: DEFAULT_COMMENT,
-            unit: DEFAULT_UNIT,
+            function: color("function"),
+            constant: color("constant"),
+            operator: color("operator"),
+            number: color("number"),
+            variable: color("variable"),
+            ans: color("ans"),
+            comment: color("comment"),
+            unit: color("unit"),
         }
+    }
+}
+
+impl Default for HighlightColors {
+    /// The built-in highlight colors.
+    fn default() -> Self {
+        Self::resolve(&ColorGroups::default(), CALCLI_THEME)
     }
 }
 

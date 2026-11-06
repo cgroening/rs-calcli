@@ -10,13 +10,14 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+use crate::config::color_groups::ColorEntry;
 use crate::config::loader::legacy::RawLegacyTheme;
 use crate::domain::format::{AngleMode, Notation};
 use crate::theme::GlyphVariant;
 
-/// A colour-override table (`name -> value`), used for `[appearance.colors]`
-/// and each `[themes.<name>]`.
-pub(super) type ColorMap = BTreeMap<String, String>;
+/// The raw entries of `[appearance.colors]` or a `[themes.<name>]`: palette
+/// colors and app color groups.
+pub(super) type RawColors = BTreeMap<String, ColorEntry>;
 
 /// The on-disk shape: every field optional so partial files merge cleanly, and
 /// wide enough to cover both the 0.2 layout and the current one.
@@ -45,10 +46,12 @@ pub(super) struct RawConfig {
     pub(super) theme: Option<RawLegacyTheme>,
 
     pub(super) appearance: Option<RawAppearance>,
-    /// Syntax-highlight token colours (`[highlight]`).
-    pub(super) highlight: Option<RawHighlight>,
+    /// The pre-0.4 `[highlight]` table. Its colors moved to
+    /// `[appearance.colors.highlight]`; the table is still accepted so the
+    /// file loads, and reported instead of read.
+    pub(super) highlight: Option<toml::Table>,
     /// User-defined themes, each a `[themes.<name>]` colour table.
-    pub(super) themes: BTreeMap<String, ColorMap>,
+    pub(super) themes: BTreeMap<String, RawColors>,
     /// Per-action key overrides (`[keys]`), each a string or a list of strings.
     pub(super) keys: BTreeMap<String, KeyBinding>,
 }
@@ -59,22 +62,11 @@ pub(super) struct RawConfig {
 pub(super) struct RawAppearance {
     pub(super) theme: Option<String>,
     pub(super) glyphs: Option<GlyphVariant>,
-    /// Per-colour overrides (`[appearance.colors]`), keyed by palette colour.
-    pub(super) colors: ColorMap,
-}
-
-/// The `[highlight]` table, all optional.
-#[derive(Debug, Default, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub(super) struct RawHighlight {
-    pub(super) function: Option<String>,
-    pub(super) constant: Option<String>,
-    pub(super) operator: Option<String>,
-    pub(super) number: Option<String>,
-    pub(super) variable: Option<String>,
-    pub(super) ans: Option<String>,
-    pub(super) comment: Option<String>,
-    pub(super) unit: Option<String>,
+    /// Percent dimmed colored text darkens while the color `dim` is set.
+    pub(super) dim_amount: Option<u8>,
+    /// Per-colour overrides (`[appearance.colors]`), keyed by palette colour,
+    /// and the app color groups (`[appearance.colors.<group>]`).
+    pub(super) colors: RawColors,
 }
 
 /// A key binding from config: either one key or a list of keys.
