@@ -66,6 +66,7 @@ pub const HISTORY_HINT_GROUPS: &[Group] = &[
             Action::ClearHistory,
             Action::CopyPlain,
             Action::CopyDisplay,
+            Action::Undo,
             Action::Back,
         ],
     ),
@@ -93,6 +94,7 @@ pub const VARIABLES_HINT_GROUPS: &[Group] = &[
             Action::CopyDisplay,
             Action::DeleteVariable,
             Action::ResetVariables,
+            Action::Undo,
         ],
     ),
 ];

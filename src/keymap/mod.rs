@@ -167,6 +167,8 @@ pub enum Action {
     CopyPlain,
     /// Copy the selected value exactly as displayed.
     CopyDisplay,
+    /// Take back the last change to the history or the variables.
+    Undo,
     /// Move the selected history entry up one row.
     MoveUp,
     /// Move the selected history entry down one row.

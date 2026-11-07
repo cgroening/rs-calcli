@@ -45,6 +45,9 @@ pub struct CalcService {
     variables: VariableStore,
     history: History,
     settings: FormatSettings,
+    /// The history and variables before the last change to either, for the
+    /// one-level undo (`u`).
+    undo: Option<(History, VariableStore)>,
 }
 
 impl CalcService {
@@ -61,7 +64,32 @@ impl CalcService {
             variables,
             history,
             settings,
+            undo: None,
         }
+    }
+
+    /// Puts the history and the variables back to how they were before the
+    /// last change to either (one level). Returns whether there was one.
+    pub fn undo(&mut self) -> bool {
+        let Some((history, variables)) = self.undo.take() else {
+            return false;
+        };
+        self.history = history;
+        self.variables = variables;
+        // The settings may have changed since; values follow the active ones.
+        self.recompute_all();
+        true
+    }
+
+    /// Whether [`undo`](Self::undo) has a change to take back.
+    pub fn can_undo(&self) -> bool {
+        self.undo.is_some()
+    }
+
+    /// Keeps the current history and variables for [`undo`](Self::undo),
+    /// right before a change to either.
+    fn remember(&mut self) {
+        self.undo = Some((self.history.clone(), self.variables.clone()));
     }
 
     /// The current display settings (the source of truth for the settings bar).
@@ -113,6 +141,7 @@ impl CalcService {
     /// assert_eq!(service.history().len(), 2);
     /// ```
     pub fn submit(&mut self, input: &str) -> SubmitOutcome {
+        self.remember();
         let ans = self.history.last_value();
         let (value, error) = self.evaluate_line(input, ans);
         let outcome = SubmitOutcome {
@@ -129,12 +158,14 @@ impl CalcService {
 
     /// Replaces the input of the entry at `index` and re-evaluates the tail.
     pub fn edit_entry(&mut self, index: usize, new_input: &str) {
+        self.remember();
         self.history.set_input(index, new_input.to_string());
         self.recompute(index);
     }
 
     /// Removes the entry at `index` and re-evaluates the tail.
     pub fn delete_entry(&mut self, index: usize) {
+        self.remember();
         self.history.remove(index);
         self.recompute(index);
     }
@@ -149,6 +180,7 @@ impl CalcService {
         }
         let target = step_index(index, delta, len);
         if target != index {
+            self.remember();
             self.history.swap(index, target);
             self.recompute(index.min(target));
         }
@@ -158,6 +190,7 @@ impl CalcService {
     /// Inserts a blank entry at `index` and re-evaluates the tail. The caller
     /// typically edits it immediately.
     pub fn insert_entry(&mut self, index: usize) {
+        self.remember();
         let blank = HistoryEntry {
             input: String::new(),
             value: None,
@@ -169,6 +202,7 @@ impl CalcService {
 
     /// Clears the history.
     pub fn clear_history(&mut self) {
+        self.remember();
         self.history.clear();
     }
 
@@ -183,11 +217,13 @@ impl CalcService {
 
     /// Removes every variable.
     pub fn reset_variables(&mut self) {
+        self.remember();
         self.variables.clear();
     }
 
     /// Removes a single variable by name.
     pub fn remove_variable(&mut self, name: &str) {
+        self.remember();
         self.variables.remove(name);
     }
 
@@ -391,6 +427,36 @@ mod tests {
 
     fn last(service: &CalcService) -> Option<f64> {
         service.history().last_value().map(|q| q.display_value())
+    }
+
+    #[test]
+    fn undo_takes_back_the_last_calculation_with_its_variable() {
+        let mut service = service();
+        service.submit("1");
+        assert!(service.can_undo());
+        service.submit("x = 5");
+        assert!(service.variables().get("x").is_some());
+        assert!(service.undo());
+        assert_eq!(service.history().len(), 1);
+        assert!(service.variables().get("x").is_none());
+        // One level: a second undo has nothing left to take back.
+        assert!(!service.undo());
+    }
+
+    #[test]
+    fn undo_restores_a_deleted_entry_and_reset_variables() {
+        let mut service = service();
+        service.submit("x = 2");
+        service.submit("ans * 3");
+        service.delete_entry(0);
+        assert!(service.undo());
+        assert_eq!(service.history().len(), 2);
+        assert_eq!(last(&service), Some(6.0));
+
+        service.reset_variables();
+        assert!(service.variables().get("x").is_none());
+        assert!(service.undo());
+        assert!(service.variables().get("x").is_some());
     }
 
     fn var(service: &CalcService, name: &str) -> Option<f64> {

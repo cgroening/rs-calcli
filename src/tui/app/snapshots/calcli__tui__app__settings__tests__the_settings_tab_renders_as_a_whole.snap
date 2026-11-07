@@ -1,0 +1,35 @@
+---
+source: src/tui/app/settings.rs
+assertion_line: 201
+expression: "render_rows(&app, 72, 30)"
+---
+
+  calcli   alt+1 Calc │ alt+2 Variables │ alt+3 Settings
+
+
+  Notation            ← DEC →                                         █
+  Decimals            ← 3 →                                           █
+  Angle mode          ← RAD →                                         █
+  Trailing zeros      ← trim →                                        █
+  Decimal mark        ← . →                                           █
+  Thousands mark      ← space →                                       ║
+  Glyphs              ← unicode →                                     ║
+  Theme               ← calcli →                                      ║
+  accent              ██ #82e38e                                     ›║
+  accent_dim          ██ #51b260                                     ›║
+  accent_vivid        ██ #68e97d                                     ›║
+  foreground          ██ #e5e5e5                                     ›║
+  foreground_dim      ██ #878787                                     ›║
+  foreground_muted    ██ #6f6f6f                                     ›║
+                                                                   2/40
+
+
+
+ Navigation:  up up · down down · pgup page up · pgdn page down
+              home first · end last · esc back
+ Change:      left previous · right/enter next
+ Settings:    f2 notation · f3 deg/rad · f7 decimal mark
+              f6 trailing zeros
+ Views:       alt+1 calc · alt+2/f4 variables · alt+3 settings
+ Global:      ctrl+p command palette · f12/? help · q quit
+              f5 reload config · f1 toggle hints · ctrl+q force quit

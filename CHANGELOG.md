@@ -8,7 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **The decimal separator toggles with `F7` (was `F5`).** `F5` reloads the configuration in every app of the family now. A `[keys] decimal_separator = "f5"` override keeps the old key, but then `F5` no longer reloads.
+- **Reset all variables is `X` (was `R`)**, and still asks first. `R` is reserved for reloading data across the app family.
+- The Settings tab follows the form rules: the labels stand in one column, a colour set in `config.toml` carries its `*` in a column of its own before the name (it stood after the value), the focused name is in the accent, a stepped value sits between `←` and `→` (instead of `‹ ›`), and a colour row carries the pointer glyph, because `Enter` opens the chooser. The status band leaves out the settings summary on this tab, which lists the same values.
+- The suggestion dropdown is the toolkit's floating menu: borderless, at the input's text, above the input when there is more room there, with a scrollbar once there are more than eight matches. `[appearance.colors.completion] text` still colours its labels.
+- The history shows the position of the selected entry (`3/12`) in its bottom-right corner, and `PgUp`/`PgDn` move it through the shared paging helper.
+- Variable rows end before the scrollbar instead of running under it.
+- The footer uses the toolkit's footer style (labels and descriptions dimmed instead of in the secondary colour).
+- The input box no longer spells out keys while browsing or editing the history; the footer lists them.
+
 - `ratada` 0.7 → 0.8: every toolkit dialog (confirm, message, the list pickers, the calendars, the help overlay, …) keeps a blank row below its title and two columns of space at each side, and the help overlay's key hints follow the other dialogs.
+
+### Added
+
+- **`u` undoes the last change** to the history or the variables - a calculation (with a variable it set), an edit, a move, an insert, a deletion, clearing the history or resetting the variables. One level, in the history and the Variables view.
+- **`F5` reloads `config.toml`**: with any problem (a parse error, an unknown colour, the old `[highlight]` table, a `dim_amount` above 100, an unsupported decimal separator) it lists them and changes nothing; a clean file rebuilds the app with the session kept.
 
 ## [0.6.0] - 2026-11-06
 

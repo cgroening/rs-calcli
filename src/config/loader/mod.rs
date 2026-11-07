@@ -78,6 +78,52 @@ pub fn load_from(path: &Path) -> Result<Config, ConfigError> {
     Ok(config)
 }
 
+/// Every problem the config file at `path` has: one it cannot be read or
+/// parsed for, and each value `load_from` would only report and replace with
+/// its default (an unknown colour, the old `[highlight]` table, a
+/// `dim_amount` above 100, an unsupported decimal separator). Empty for a
+/// clean file and for a missing one. `F5` reloads only a clean
+/// configuration.
+pub fn problems(path: &Path) -> Vec<String> {
+    match std::fs::read_to_string(path) {
+        Ok(content) => content_problems(&content),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Vec::new(),
+        Err(error) => vec![format!("cannot read {}: {error}", path.display())],
+    }
+}
+
+/// The problems of a config file's `content` (see [`problems`]).
+fn content_problems(content: &str) -> Vec<String> {
+    let raw: RawConfig = match toml::from_str(content) {
+        Ok(raw) => raw,
+        Err(error) => return vec![error.to_string()],
+    };
+    let mut problems = Vec::new();
+    if raw.highlight.is_some() {
+        problems.push(
+            "[highlight] moved to [appearance.colors.highlight]".to_string(),
+        );
+    }
+    if let Some(separator) = &raw.decimal_separator
+        && !matches!(separator.as_str(), "." | ",")
+    {
+        problems.push(format!("unsupported decimal_separator {separator:?}"));
+    }
+    let appearance = raw.appearance.unwrap_or_default();
+    if let Some(amount) = appearance.dim_amount
+        && amount > MAX_DIM_AMOUNT
+    {
+        problems.push(format!(
+            "appearance.dim_amount = {amount} is above {MAX_DIM_AMOUNT}"
+        ));
+    }
+    let colors = SplitColors::new(appearance.colors, raw.themes);
+    problems.extend(colors.unknown().into_iter().map(|(section, name)| {
+        format!("unknown colour '{name}' in [{section}]")
+    }));
+    problems
+}
+
 /// Parses and merges a TOML config string over the defaults (no env applied).
 ///
 /// # Errors
@@ -243,6 +289,21 @@ fn parse_separator(value: &str) -> Option<char> {
             );
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod problem_tests {
+    use super::content_problems;
+
+    #[test]
+    fn problems_list_what_loading_would_only_report() {
+        assert!(content_problems("").is_empty());
+        let found = content_problems(
+            "decimal_separator = \";\"\n[appearance]\ndim_amount = 140\n",
+        );
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert_eq!(content_problems("notation = ").len(), 1);
     }
 }
 

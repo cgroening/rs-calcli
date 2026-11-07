@@ -34,7 +34,7 @@ impl App {
                 tabs: ViewId::tabs(),
                 active_tab: self.active.index(),
                 tabs_locked: matches!(self.mode, Mode::Edit(_)),
-                status_left: &self.settings_summary(),
+                status_left: &self.status_summary(),
                 status_right: &status_right,
                 hints: &hints,
             },
@@ -46,7 +46,16 @@ impl App {
         }
     }
 
-    /// The always-visible settings summary in the status band.
+    /// The left of the status band: the settings summary, except on the
+    /// Settings tab, which lists the same values itself.
+    fn status_summary(&self) -> String {
+        match self.active {
+            ViewId::Settings => String::new(),
+            ViewId::Calc | ViewId::Variables => self.settings_summary(),
+        }
+    }
+
+    /// The settings summary in the status band.
     fn settings_summary(&self) -> String {
         let settings = self.service.settings();
         let values = [
@@ -88,10 +97,14 @@ impl App {
         // The suggestion text, `[appearance.colors.completion] text`.
         let completion_text =
             self.color_groups.color(&self.theme, "completion", "text");
-        let completion = self.autocomplete.lines(
-            &self.skin.palette,
-            0,
-            ratada::style::fg(completion_text),
+        let completion = (
+            &self.autocomplete,
+            ratada::autocomplete::PopupStyle {
+                foreground: ratada::style::to_ratatui(completion_text),
+                ..ratada::autocomplete::PopupStyle::from_palette(
+                    &self.skin.palette,
+                )
+            },
         );
 
         let view = CalcView {

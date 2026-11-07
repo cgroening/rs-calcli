@@ -8,7 +8,7 @@
 
 use ratada::nav::ScrollView;
 use ratada::theme::Skin;
-use ratada::{scroll, style};
+use ratada::{chrome, scroll, style};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -43,6 +43,20 @@ pub(super) fn render_history(
         frame.render_widget(Paragraph::new(hint), area);
         return metrics;
     }
+
+    // The bottom row carries the `n/m` badge of the selected entry (the
+    // history fills the borderless body, so the badge sits in its corner).
+    // It is kept free in every mode, so entering the history never shifts it.
+    let badge_area = area;
+    let area = if area.height > 1 {
+        Rect {
+            height: area.height - 1,
+            ..area
+        }
+    } else {
+        area
+    };
+    let height = area.height as usize;
 
     // Decide whether a scrollbar is needed at full width; if so, reserve two
     // columns: one blank gutter plus the scrollbar column itself.
@@ -101,6 +115,12 @@ pub(super) fn render_history(
             viewport: height,
         },
     );
+    if let Some(selected) = view.selected
+        && badge_area.height > 1
+    {
+        let badge = chrome::position_badge(selected, view.rows.len());
+        chrome::render_corner_badge(frame, badge_area, skin, &badge);
+    }
     metrics
 }
 

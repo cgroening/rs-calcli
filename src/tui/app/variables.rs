@@ -41,6 +41,7 @@ impl App {
             Action::InsertVariable => self.insert_variable(),
             Action::CopyPlain => self.copy_variable(false),
             Action::CopyDisplay => self.copy_variable(true),
+            Action::Undo => self.undo_last(),
             Action::DeleteVariable => self.delete_variable(),
             Action::ResetVariables => self.reset_variables(io)?,
             Action::Back => self.active = ViewId::Calc,
@@ -135,7 +136,7 @@ mod tests {
         assert_eq!(app.active, ViewId::Variables);
         assert!(render_to_string(&app, 80, 24).contains("x = 7"));
 
-        press(&mut app, key(KeyCode::Char('R')));
+        press(&mut app, key(KeyCode::Char('X')));
         assert_eq!(app.service().variables().len(), 0);
     }
 

@@ -367,6 +367,23 @@ impl App {
         self.status = Some(message);
     }
 
+    /// `u`: takes back the last change to the history or the variables and
+    /// keeps both selections inside the restored lists.
+    pub(super) fn undo_last(&mut self) {
+        if !self.service.undo() {
+            self.report("nothing to undo".to_string());
+            return;
+        }
+        let entries = self.service.history().len();
+        self.selected = self
+            .selected
+            .map(|index| index.min(entries.saturating_sub(1)))
+            .filter(|_| entries > 0);
+        let variables = self.service.variables().len();
+        self.var_selected = self.var_selected.min(variables.saturating_sub(1));
+        self.report("undone".to_string());
+    }
+
     /// Empties the input buffer and parks the caret at its start.
     pub(super) fn reset_input(&mut self) {
         self.input.clear();

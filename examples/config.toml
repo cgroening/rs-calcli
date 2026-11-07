@@ -193,7 +193,7 @@ text = "#bebebe"
 # # Settings, reachable from every view
 # notation = "f2"
 # angle_mode = "f3"
-# decimal_separator = "f5"
+# decimal_separator = "f7"
 # trim_zeros = "f6"
 #
 # # Global
@@ -221,6 +221,7 @@ text = "#bebebe"
 # bottom = "end"
 # copy = "y"
 # copy_displayed = "Y"
+# undo = "u"
 # back = "esc"
 #
 # # The history list
@@ -235,7 +236,7 @@ text = "#bebebe"
 # # The variables list
 # insert_variable = "enter"
 # delete_variable = ["d", "del"]
-# reset_variables = "R"
+# reset_variables = "X"
 #
 # # The settings list
 # prev_value = "left"

@@ -188,9 +188,18 @@ mod tests {
     use super::*;
     use crate::domain::format::Notation;
     use crate::tui::app::testing::{
-        chord, key, press, render_to_string, test_app,
+        chord, key, press, render_rows, render_to_string, test_app,
     };
     use crate::tui::views::ViewId;
+
+    /// The whole Settings tab: label column, stepper values, colour rows
+    /// with swatch and pointer, the tinted cursor row and the corner badge.
+    #[test]
+    fn the_settings_tab_renders_as_a_whole() {
+        let mut app = test_app();
+        select(&mut app, Row::Decimals);
+        insta::assert_snapshot!(render_rows(&app, 72, 30));
+    }
 
     // --- The settings view ---
 

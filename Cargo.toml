@@ -48,5 +48,9 @@ rink-core = { version = "0.9.0", features = ["bundle-files"] }
 # https://crates.io/crates/clap - declarative argument parsing, help and version.
 clap = { version = "4", features = ["derive"] }
 
+[dev-dependencies]
+# https://crates.io/crates/insta - snapshot tests of the drawn views.
+insta = "1.48.0"
+
 [profile.release]
 opt-level = 3

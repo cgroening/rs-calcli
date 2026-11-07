@@ -8,11 +8,11 @@
 use std::cell::Cell;
 use std::collections::BTreeMap;
 
+use ratada::form::field::{self, FieldStyles, LabelMarks};
 use ratada::theme::{Color, GlyphVariant, Palette, Skin};
-use ratada::{list, markdown, style};
+use ratada::{list, style, text};
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
 
 use crate::config::color_groups::{APP_COLOR_GROUPS, ColorGroups};
@@ -162,9 +162,7 @@ impl Values<'_> {
             Row::Theme => self.theme.to_string(),
             Row::DimAmount => format!("{}%", self.dim_amount),
             Row::Color(_) | Row::GroupColor { .. } => {
-                let color = self.color_of(row).unwrap_or(Color::Default);
-                let marker = if self.is_overridden(row) { " *" } else { "" };
-                format!("{}{marker}", color_label(color))
+                color_label(self.color_of(row).unwrap_or(Color::Default))
             }
         }
     }
@@ -180,8 +178,8 @@ impl Values<'_> {
         }
     }
 
-    /// Whether the config sets the colour of `row`.
-    fn is_overridden(&self, row: Row) -> bool {
+    /// Whether the config sets the colour of `row` (the `*` marker).
+    pub fn is_overridden(&self, row: Row) -> bool {
         match row {
             Row::Color(name) => self.overrides.contains_key(name),
             Row::GroupColor { group, key } => {
@@ -200,8 +198,11 @@ fn color_label(color: Color) -> String {
     }
 }
 
-/// The block drawn as a colour swatch.
+/// The block drawn as a colour swatch, with its gap to the value.
 const SWATCH: &str = "\u{2588}\u{2588} ";
+
+/// The scrollbar column, which the rows never draw into.
+const SCROLLBAR_WIDTH: usize = 1;
 
 /// The step of one `←`/`→` press on the dim amount, in percent.
 const DIM_AMOUNT_STEP: u8 = 5;
@@ -289,55 +290,81 @@ pub fn step_decimals(current: usize, delta: isize) -> usize {
 }
 
 /// Renders the settings list into `area`.
+///
+/// The rows follow the form rules: the labels in a column as wide as the
+/// longest one, the `*` of a colour the config sets in its own column before
+/// the label, the focused label in the accent, a value stepped with `←`/`→`
+/// between the stepper glyphs and a colour - which `Enter` opens the chooser
+/// for - with the pointer glyph. The list fills the borderless body, so its
+/// cursor is the tinted row and the badge sits in the bottom-right corner.
 pub fn render(
     frame: &mut Frame,
     area: Rect,
     skin: &Skin,
     view: &SettingsView,
 ) -> usize {
-    let palette = &skin.palette;
     let all = Row::all();
-    let width = all.iter().map(|row| row.label().len()).max().unwrap_or(0);
+    let styles = FieldStyles::from_palette(&skin.palette);
+    let labels: Vec<String> = all.iter().map(|row| row.label()).collect();
+    let label_width =
+        field::label_column_width(labels.iter().map(String::as_str));
+    let width = usize::from(area.width).saturating_sub(SCROLLBAR_WIDTH);
+    let value_width = width.saturating_sub(field::value_column(label_width));
+    let selected = view.selected.min(all.len() - 1);
 
     let rows: Vec<Line<'static>> = all
         .iter()
-        .map(|&row| {
-            let value = view.values.of(row);
-            let mut spans = vec![
-                Span::styled(
-                    format!(" {:width$}  ", row.label(), width = width),
-                    style::secondary(palette),
-                ),
-                Span::styled("\u{2039} ", style::muted(palette)),
-            ];
-            if let Some(color) = view.values.color_of(row) {
-                spans.push(Span::styled(SWATCH, style::fg(color)));
-            }
-            spans.extend([
-                Span::styled(
-                    value,
-                    style::fg(palette.accent).add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(" \u{203a}", style::muted(palette)),
-            ]);
-            Line::from(markdown::clip_spans(
-                spans,
-                area.width as usize,
-                style::muted(palette),
-            ))
+        .enumerate()
+        .map(|(index, &row)| {
+            let label = &labels[index];
+            let marks = LabelMarks {
+                changed: view.values.is_overridden(row),
+                focused: index == selected,
+                problem: false,
+            };
+            let mut spans =
+                field::label_cell(label, label_width, marks, &styles);
+            spans.extend(value_spans(row, view, skin, &styles, value_width));
+            Line::from(spans)
         })
         .collect();
 
-    list::render(
+    list::render_counted(
         frame,
         area,
         skin,
         list::ListView {
             rows,
-            selected: view.selected.min(all.len() - 1),
+            selected,
             offset: view.offset,
         },
     )
+}
+
+/// The value part of one row, `width` columns wide.
+fn value_spans(
+    row: Row,
+    view: &SettingsView,
+    skin: &Skin,
+    styles: &FieldStyles,
+    width: usize,
+) -> Vec<Span<'static>> {
+    let value = view.values.of(row);
+    let Some(color) = view.values.color_of(row) else {
+        return vec![Span::raw(text::truncate(
+            &skin.glyphs.stepper(&value),
+            width,
+        ))];
+    };
+    let rest = width.saturating_sub(SWATCH.chars().count());
+    let mut spans = vec![Span::styled(SWATCH, style::fg(color))];
+    spans.extend(field::picker_value_spans(
+        &value,
+        rest,
+        skin.glyphs.pointer,
+        styles,
+    ));
+    spans
 }
 
 #[cfg(test)]

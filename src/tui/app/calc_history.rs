@@ -11,6 +11,7 @@
 //! for the same reason - there is nothing above it to reach.
 
 use anyhow::Result;
+use ratada::nav;
 
 use crate::keymap::Action;
 use crate::tui::app::App;
@@ -50,7 +51,7 @@ impl App {
         };
         let total = self.service.history().len();
         let last = total.saturating_sub(1);
-        let page = self.metrics.get().view_height.max(1);
+        let page = self.metrics.get().view_height.max(1) as isize;
         match action {
             Action::Up => self.selected = Some(index.saturating_sub(1)),
             Action::Down => {
@@ -62,12 +63,17 @@ impl App {
             }
             Action::Top => self.selected = Some(0),
             Action::Bottom => self.selected = Some(last),
-            Action::PageUp => self.selected = Some(index.saturating_sub(page)),
-            Action::PageDown => self.selected = Some((index + page).min(last)),
+            Action::PageUp => {
+                self.selected = Some(nav::step_clamped(index, total, -page));
+            }
+            Action::PageDown => {
+                self.selected = Some(nav::step_clamped(index, total, page));
+            }
             Action::MoveUp => self.move_selected(index, -1),
             Action::MoveDown => self.move_selected(index, 1),
             Action::CopyPlain => self.copy_selected(index, false),
             Action::CopyDisplay => self.copy_selected(index, true),
+            Action::Undo => self.undo_last(),
             Action::EditEntry => self.start_edit(index),
             Action::InsertBelow => self.insert_line(index + 1),
             Action::InsertAbove => self.insert_line(index),

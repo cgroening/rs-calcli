@@ -10,12 +10,12 @@
 //! from a constant, so hiding the hints with `F1` reclaims the hint rows *and*
 //! the blank separator line above them.
 
+use ratada::chrome::fill_panel;
 use ratada::shortcut_hints::{self, HintGroup, HintStyle};
 use ratada::theme::Skin;
 use ratada::{help, statusbar, style, tabs};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::Modifier;
 use ratatui::widgets::{Block, Padding};
 
 /// The brand shown at the start of the tab bar.
@@ -75,7 +75,7 @@ pub fn render_frame(frame: &mut Frame, ctx: &FrameContext<'_>) -> Rect {
     );
 
     let groups = to_hint_groups(ctx.hints);
-    let hints = hint_style(ctx.skin);
+    let hints = HintStyle::footer(ctx.skin);
     let header_height = header_height(ctx.tabs, width);
     let hints_height = hints_height(
         shortcut_hints::height(&groups, width, hints.top_margin),
@@ -171,31 +171,6 @@ fn render_hints(
         ..area
     };
     shortcut_hints::render(frame, inner, groups, opts);
-}
-
-/// Fills `area` with `bg` and returns the region inset by `padding`.
-fn fill_panel(
-    frame: &mut Frame,
-    area: Rect,
-    bg: ratada::theme::Color,
-    padding: Padding,
-) -> Rect {
-    let block = Block::default().style(style::bg(bg)).padding(padding);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-    inner
-}
-
-/// The hint-band style: keys in the accent (bold), labels and descriptions dim,
-/// one blank row above and no background, so the hints sit on the terminal's
-/// own colour.
-fn hint_style(skin: &Skin) -> HintStyle {
-    HintStyle {
-        key: style::fg(skin.palette.accent).add_modifier(Modifier::BOLD),
-        label: style::secondary(&skin.palette),
-        description: style::secondary(&skin.palette),
-        ..HintStyle::default()
-    }
 }
 
 /// Borrows owned groups as toolkit [`HintGroup`]s. The owned value must outlive

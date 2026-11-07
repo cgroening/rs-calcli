@@ -69,7 +69,7 @@ pub(super) const ACTIONS: &[ActionSpec] = &[
         config_name: "decimal_separator",
         description: "decimal mark",
         scope: Scope::Global,
-        default_keys: &["f5"],
+        default_keys: &["f7"],
     },
     ActionSpec {
         action: Action::ToggleTrim,
@@ -205,6 +205,13 @@ pub(super) const ACTIONS: &[ActionSpec] = &[
         default_keys: &["Y"],
     },
     ActionSpec {
+        action: Action::Undo,
+        config_name: "undo",
+        description: "undo",
+        scope: Scope::List,
+        default_keys: &["u"],
+    },
+    ActionSpec {
         action: Action::MoveUp,
         config_name: "move_up",
         description: "move up",
@@ -279,7 +286,7 @@ pub(super) const ACTIONS: &[ActionSpec] = &[
         config_name: "reset_variables",
         description: "reset",
         scope: Scope::Variables,
-        default_keys: &["R"],
+        default_keys: &["X"],
     },
     ActionSpec {
         action: Action::PreviousValue,

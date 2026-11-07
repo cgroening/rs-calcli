@@ -39,6 +39,12 @@ impl App {
     ) -> Result<Flow> {
         // A transient status clears on the next key press.
         self.status = None;
+        // `F5` reloads the configuration from every context, like `Ctrl+Q`
+        // quits from every context.
+        if ratada::reload::is_reload_key(key) {
+            self.request_reload(io)?;
+            return Ok(self.flow());
+        }
         let context = self.context();
 
         if self.completion_consumed(key) {
@@ -55,6 +61,27 @@ impl App {
         }
         self.refresh_completion();
         Ok(self.flow())
+    }
+
+    /// `F5`: checks `config.toml`; its problems are shown and nothing is
+    /// reloaded, a clean file ends the TUI with the reload signal so `main`
+    /// builds everything anew.
+    fn request_reload(&self, io: &mut dyn Interaction) -> Result<()> {
+        let path = self
+            .config_path
+            .clone()
+            .unwrap_or_else(crate::util::paths::config_file);
+        let problems = crate::config::config_problems(&path);
+        let checked = if problems.is_empty() {
+            Ok(())
+        } else {
+            Err(ratada::reload::ConfigProblems {
+                title: format!("{} has problems", path.display()),
+                body: problems.join("\n"),
+            })
+        };
+        io.reload_config(self, checked)?;
+        Ok(())
     }
 
     /// Whether an open suggestion dropdown took `key` for itself.
@@ -283,6 +310,47 @@ mod tests {
         value_at,
     };
     use crate::tui::interaction::Headless;
+
+    /// Points `app` at a config file holding `content`.
+    fn with_config(app: &mut App, name: &str, content: &str) {
+        let path = std::env::temp_dir()
+            .join(format!("calcli-test-{name}-{}.toml", std::process::id()));
+        std::fs::write(&path, content).expect("the temp config is written");
+        app.config_path = Some(path);
+    }
+
+    #[test]
+    fn f5_on_a_clean_config_ends_the_tui_with_the_reload_signal() {
+        let mut app = test_app();
+        with_config(&mut app, "clean", "");
+        let mut io = Headless::accepting();
+        let Err(error) = app.dispatch(key(KeyCode::F(5)), &mut io) else {
+            panic!("F5 on a clean config must end the TUI");
+        };
+        let io_error = error.downcast_ref::<std::io::Error>().expect("io");
+        assert!(ratada::reload::is_reload(io_error));
+    }
+
+    #[test]
+    fn f5_on_a_faulty_config_only_reports_it() {
+        let mut app = test_app();
+        with_config(&mut app, "faulty", "decimal_separator = \";\"\n");
+        let mut io = Headless::accepting();
+        let flow = app.dispatch(key(KeyCode::F(5)), &mut io);
+        assert!(matches!(flow, Ok(Flow::Continue)));
+        assert_eq!(io.asked, 1, "the problems were shown");
+    }
+
+    #[test]
+    fn u_takes_back_the_last_calculation_from_the_history() {
+        let mut app = test_app();
+        submit(&mut app, "1");
+        submit(&mut app, "2");
+        press(&mut app, key(KeyCode::Up));
+        press(&mut app, key(KeyCode::Char('u')));
+        assert_eq!(app.service().history().len(), 1);
+        assert_eq!(app.status.as_deref(), Some("undone"));
+    }
 
     // --- Autocomplete ---
 

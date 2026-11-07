@@ -21,7 +21,7 @@ Type an expression, press Enter, keep going. The previous result is available as
 - **Growing input** – long expressions soft-wrap and the input field grows (up to `input_max_lines`); `↑/↓` move the caret across the wrapped lines, `↑` on the first line enters the history.
 - **Syntax highlighting** – functions, constants, operators (bold), numbers, defined variables, units, parentheses and `ans` are coloured in the input, the history and while editing. Colours are configurable in the `[appearance.colors.highlight]` table; unknown identifiers stay neutral.
 - **Live feedback** – as you type, the input border shows a dim `= value` preview while the expression is valid and a subtle warning marker when it looks complete but won't parse (silent while still mid-typing). Toggle with `live_feedback` in the config.
-- **Settings view** – every display setting on one editable list (`←`/`→` steps the focused value, applied live), including the theme and the glyph set, followed by every colour: the palette, the dim amount, and the highlight and completion groups. `Enter` on a colour opens the colour chooser, `Backspace` resets it to the theme's value; a colour or the dim amount is written to `config.toml` (comments are kept) and marked `*` when set there. The function keys keep working from every view.
+- **Settings view** – every display setting on one editable list (`←`/`→` steps the focused value, applied live), including the theme and the glyph set, followed by every colour: the palette, the dim amount, and the highlight and completion groups. `Enter` on a colour opens the colour chooser, `Backspace` resets it to the theme's value; a colour or the dim amount is written to `config.toml` (comments are kept) and marked `*` in the column before its name when set there. A stepped value sits between `←` and `→`; a colour row carries the pointer glyph, since `Enter` opens a picker for it. The function keys keep working from every view.
 - **Shortcut hints** – the footer lists the current view's keys, grouped, with a closing `Global` group. `F1` hides the whole band (the state is remembered); `F12` or `?` opens the scrollable, fuzzy-filtered help overlay.
 - **Persistence** – settings, variables, history and the interface state (active view, theme, glyphs, hint visibility) are saved on exit and restored next time (settings restore is configurable). Writes are atomic, and a `state.toml` from any older calcli still loads.
 
@@ -86,13 +86,14 @@ Available everywhere. The function keys and `Alt` chords also work while typing,
 | `F4` | switch to Variables |
 | `F2` | cycle notation (dec / sci / SI) |
 | `F3` | toggle angle mode (deg / rad) |
-| `F5` | toggle decimal separator (`.` / `,`) |
+| `F7` | toggle decimal separator (`.` / `,`) |
 | `F6` | toggle trailing-zero trimming |
 | `Ctrl+Y` | copy the last result (plain) |
-| `Ctrl+R` | search the history and recall a line into the input |
+| `Ctrl+R` | search the history and recall a line into the input (deliberately not the config reload of the other apps: `Ctrl+R` is the history search of every shell) |
 | `Ctrl+P` | open the command palette (run any action by name) |
 | `F12` / `?` | open the help overlay |
 | `q` | quit (outside the input; use `:q` while typing) |
+| `F5` | reload `config.toml` (only when it has no problem; otherwise the problems are shown); the session is kept |
 | `F1` | show / hide the shortcut hints |
 | `Ctrl+Q` | quit at once, from anywhere (a modal included) |
 
@@ -109,7 +110,7 @@ With `confirm_quit = true` the soft quit (`q`, `:q`) asks first; `Ctrl+Q` never 
 | `Esc` | clear the input |
 | `Ctrl+C` / `X` / `V` | copy / cut / paste in the input |
 
-Typing an identifier opens a suggestion dropdown of matching variables, built-in functions and constants. Nothing is selected until you pick: `↑` / `↓` (or `Ctrl+J` / `Ctrl+K`, `Shift+Tab`) pick a suggestion, `Tab` accepts the picked one or else the first, `Enter` accepts only a picked one (otherwise it evaluates as usual), `←` / `→` close the dropdown and move the caret, and `Esc` closes the dropdown. While it is open `↑` steers it rather than the history, so use `PgUp` to browse the history from there.
+Typing an identifier opens a suggestion dropdown of matching variables, built-in functions and constants, floating at the input's text (above it when there is more room there). Nothing is selected until you pick: `↑` / `↓` (or `Ctrl+J` / `Ctrl+K`, `Shift+Tab`) pick a suggestion, `Tab` accepts the picked one or else the first, `Enter` accepts only a picked one (otherwise it evaluates as usual), `←` / `→` close the dropdown and move the caret, and `Esc` closes the dropdown. While it is open `↑` steers it rather than the history, so use `PgUp` to browse the history from there.
 
 ### Calc – browsing the history (after `↑`)
 
@@ -123,6 +124,7 @@ Typing an identifier opens a suggestion dropdown of matching variables, built-in
 | `D` | clear the whole history (asks first) |
 | `y` | copy the value (plain, full precision) |
 | `Y` | copy the value (as shown, grouped) |
+| `u` | undo the last change to the history or the variables (one level, a calculation included) |
 | `Esc` | back to the input |
 
 Reordering, inserting and deleting all re-evaluate the affected lines, so `ans` and variable assignments stay consistent with the new order.
@@ -146,7 +148,8 @@ Switching views is locked while a line is being edited; the tab bar dims to say 
 | `Enter` | insert the name into the input and return to Calc |
 | `y` / `Y` | copy the value (plain / as shown) |
 | `d` / `Del` | delete the variable |
-| `R` | reset all variables (asks first) |
+| `X` | reset all variables (asks first) |
+| `u` | undo the last change (one level) |
 | `Esc` | back to Calc |
 
 ### Settings (`Alt+3`)

@@ -17,7 +17,13 @@ pub(super) fn row_view() -> CalcView<'static> {
         cursor: TextCursor::at(0),
         input_styles: &[],
         row_styles: &[],
-        completion: Vec::new(),
+        // A closed dropdown; leaked so the view can borrow it for 'static.
+        completion: (
+            Box::leak(Box::new(ratada::autocomplete::Autocomplete::new(
+                Vec::new(),
+            ))),
+            ratada::autocomplete::PopupStyle::from_palette(&skin().palette),
+        ),
         caret: CaretColors {
             cursor: ratatui::style::Color::Reset,
             selection: ratatui::style::Color::Reset,

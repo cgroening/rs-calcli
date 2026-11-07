@@ -66,10 +66,10 @@ fn run(cli: &Cli) -> anyhow::Result<()> {
             calcli::APP_NAME,
         );
     }
-    let config = load_config().context("loading configuration")?;
+    let mut config = load_config().context("loading configuration")?;
 
     let repository = TomlStateRepository::new(paths::state_file());
-    let state = if demo {
+    let mut state = if demo {
         calcli::demo::demo_state()
     } else {
         repository.load().unwrap_or_else(|error| {
@@ -78,20 +78,38 @@ fn run(cli: &Cli) -> anyhow::Result<()> {
         })
     };
 
-    let service = build_service(&config, &state);
-    let mut app = App::new(service, &config, &state.ui);
+    // `F5` in the TUI comes back here: the session is kept, the
+    // configuration read again (the TUI checked it is clean) and everything
+    // built anew from both.
+    loop {
+        let service = build_service(&config, &state);
+        let mut app = App::new(service, &config, &state.ui);
 
-    let mut tui = Tui::new().context("initializing the terminal")?;
-    let outcome = tui::run(&mut app, &mut tui);
-    drop(tui);
-    outcome?;
+        let mut tui = Tui::new().context("initializing the terminal")?;
+        let outcome = tui::run(&mut app, &mut tui);
+        drop(tui);
+        let reload = matches!(&outcome, Err(error) if is_reload(error));
+        if !reload {
+            outcome?;
+        }
 
-    if !demo {
-        repository
-            .save(&app.persisted_state())
-            .context("saving the session")?;
+        state = app.persisted_state();
+        if !demo {
+            repository.save(&state).context("saving the session")?;
+        }
+        if !reload {
+            return Ok(());
+        }
+        config = load_config().context("reloading configuration")?;
+        log::info!("configuration reloaded");
     }
-    Ok(())
+}
+
+/// Whether `error` is the TUI's reload signal (`F5`).
+fn is_reload(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<std::io::Error>()
+        .is_some_and(ratada::reload::is_reload)
 }
 
 /// Builds the calculator service from config and the restored state.

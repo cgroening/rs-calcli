@@ -126,6 +126,19 @@ pub trait Interaction {
 
     /// Whether a soft quit may proceed, asking first when configured to.
     fn may_quit(&mut self, app: &App) -> bool;
+
+    /// `F5`: shows why the configuration cannot be reloaded (`checked` is
+    /// an error) and returns `Ok`, or returns the reload signal as the error
+    /// for a clean configuration.
+    ///
+    /// # Errors
+    ///
+    /// The reload signal, or an I/O error when the report cannot be drawn.
+    fn reload_config(
+        &mut self,
+        app: &App,
+        checked: Result<(), ratada::reload::ConfigProblems>,
+    ) -> io::Result<()>;
 }
 
 /// The production implementation: `ratada`'s blocking modals over the live
@@ -240,6 +253,16 @@ impl Interaction for Modals<'_> {
         let repaint = |frame: &mut Frame| app.render(frame);
         quit::request(self.tui, QuitKind::Soft, &repaint)
     }
+
+    fn reload_config(
+        &mut self,
+        app: &App,
+        checked: Result<(), ratada::reload::ConfigProblems>,
+    ) -> io::Result<()> {
+        ratada::reload::request(self.tui, app.skin(), checked, |frame| {
+            app.render(frame);
+        })
+    }
 }
 
 #[cfg(test)]
@@ -349,6 +372,18 @@ mod headless {
 
         fn may_quit(&mut self, _app: &App) -> bool {
             true
+        }
+
+        fn reload_config(
+            &mut self,
+            _app: &App,
+            checked: Result<(), ratada::reload::ConfigProblems>,
+        ) -> io::Result<()> {
+            self.asked += 1;
+            match checked {
+                Ok(()) => Err(ratada::reload::signal()),
+                Err(_) => Ok(()),
+            }
         }
     }
 }

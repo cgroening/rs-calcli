@@ -317,7 +317,7 @@ mod tests {
         assert_eq!(app.service().settings().angle_mode, AngleMode::Deg);
 
         assert_eq!(app.service().settings().decimal_separator, '.');
-        press(&mut app, key(KeyCode::F(5)));
+        press(&mut app, key(KeyCode::F(7)));
         assert_eq!(app.service().settings().decimal_separator, ',');
 
         assert!(app.service().settings().trim_trailing_zeros);

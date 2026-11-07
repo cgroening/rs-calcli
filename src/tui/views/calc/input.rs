@@ -66,11 +66,13 @@ pub(super) fn render_input(
     let lines = match view.mode {
         Mode::Input => input_editor_lines(view, skin, inner, width),
         Mode::History => vec![Line::from(Span::styled(
-            "browsing history - \u{2191}\u{2193} select, Enter edit, Esc back",
+            // The keys stand in the footer; repeating them here would show
+            // them twice and miss a rebinding.
+            "browsing the history",
             style::secondary(&skin.palette),
         ))],
         Mode::Edit(_) => vec![Line::from(Span::styled(
-            "editing line - Enter apply, Esc cancel",
+            "editing a line in place",
             style::secondary(&skin.palette),
         ))],
     };

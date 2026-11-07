@@ -49,7 +49,8 @@ pub fn render(
         return 0;
     }
 
-    let width = area.width as usize;
+    // The last column is the scrollbar's; a row never draws into it.
+    let width = usize::from(area.width).saturating_sub(SCROLLBAR_WIDTH);
     let rows: Vec<Line<'static>> = view
         .variables
         .iter()
@@ -67,6 +68,9 @@ pub fn render(
         },
     )
 }
+
+/// The scrollbar column of the list.
+const SCROLLBAR_WIDTH: usize = 1;
 
 /// One variable row: `name = value`, clipped to `width` columns.
 ///

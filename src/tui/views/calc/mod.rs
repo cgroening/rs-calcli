@@ -9,22 +9,21 @@
 //! tail. That is why the history cannot use [`ratada::list`], which assumes
 //! uniform rows; the scrollbar still comes from [`ratada::scroll`].
 
-mod completion;
 mod history;
 mod input;
 #[cfg(test)]
 mod testing;
 
+use ratada::autocomplete::{Autocomplete, PopupStyle};
 use ratada::theme::Skin;
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::layout::{Constraint, Layout, Position, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::Line;
 
 use crate::domain::history::HistoryEntry;
 use crate::tui::colors::CaretColors;
 use crate::tui::text_edit::TextCursor;
-use crate::tui::views::calc::completion::render_completion;
 use crate::tui::views::calc::history::render_history;
 use crate::tui::views::calc::input::{input_box_height, render_input};
 
@@ -82,9 +81,9 @@ pub struct CalcView<'a> {
     pub input_styles: &'a [Style],
     /// The per-entry per-character styles for the history inputs.
     pub row_styles: &'a [Vec<Style>],
-    /// The suggestion dropdown lines to float above the input, empty when the
-    /// autocomplete is closed.
-    pub completion: Vec<Line<'static>>,
+    /// The suggestion dropdown and its colours; it floats at the caret's
+    /// field and draws nothing while closed.
+    pub completion: (&'a Autocomplete, PopupStyle),
     /// The caret and selection colours.
     pub caret: CaretColors,
     /// How the history list is spaced and tinted.
@@ -112,6 +111,13 @@ pub struct Metrics {
     pub view_height: usize,
 }
 
+/// Columns from the input box's left edge to its text: the border and one
+/// column of padding.
+const INPUT_TEXT_COLUMN: u16 = 2;
+
+/// Rows from the input box's top edge to its first line: the border.
+const INPUT_TEXT_ROW: u16 = 1;
+
 /// Renders the calc view and returns the measurements the app needs.
 pub fn render(
     frame: &mut Frame,
@@ -128,9 +134,15 @@ pub fn render(
 
     let mut metrics = render_history(frame, rows[0], skin, view);
     metrics.input_width = render_input(frame, rows[1], skin, view);
-    // The suggestion dropdown floats over the foot of the history, just above
-    // the input box, so it never grows the bordered field itself. It is bound
-    // to the history area, so it never spills over the header above.
-    render_completion(frame, rows[0], skin, &view.completion);
+    // The suggestion menu floats at the input's text (inside its border and
+    // padding) and flips above it, over the history, when there is more room
+    // there; it never leaves the calc view, so it never spills over the
+    // header.
+    let (autocomplete, style) = view.completion;
+    let anchor = Position::new(
+        rows[1].x + INPUT_TEXT_COLUMN,
+        rows[1].y + INPUT_TEXT_ROW,
+    );
+    autocomplete.render_popup(frame, anchor, area, &style);
     metrics
 }

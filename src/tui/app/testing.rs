@@ -92,3 +92,20 @@ pub(super) fn render_to_string(app: &App, width: u16, height: u16) -> String {
         .map(|cell| cell.symbol())
         .collect()
 }
+
+/// Renders `app` into a test terminal and returns the screen rows, trailing
+/// blanks trimmed, one per line - the form a snapshot reads well in.
+pub(super) fn render_rows(app: &App, width: u16, height: u16) -> String {
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).expect("test terminal");
+    terminal.draw(|frame| app.render(frame)).expect("draw");
+    let buffer = terminal.backend().buffer();
+    (0..height)
+        .map(|y| {
+            let row: String =
+                (0..width).map(|x| buffer[(x, y)].symbol()).collect();
+            row.trim_end().to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}

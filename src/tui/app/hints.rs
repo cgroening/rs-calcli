@@ -15,8 +15,9 @@ use crate::tui::views::ViewId;
 use crate::tui::views::calc::Mode;
 
 impl App {
-    /// The closing `Global` group: the app's own chords first, then the
-    /// toolkit's (`f1 toggle hints`, `ctrl+q force quit`). One helper feeds
+    /// The closing `Global` group: the app's own chords first, the fixed
+    /// `f5 reload config`, then the toolkit's (`f1 toggle hints`, `ctrl+q
+    /// force quit`). One helper feeds
     /// both the footer and the help overlay, so they cannot drift apart.
     fn global_group(&self) -> (String, Vec<(String, String)>) {
         let mut hints = self.keymap.hints(&[
@@ -24,6 +25,8 @@ impl App {
             Action::OpenHelp,
             Action::Quit,
         ]);
+        let (reload_key, reload_label) = ratada::reload::RELOAD_HINT;
+        hints.push((reload_key.to_string(), reload_label.to_string()));
         hints.extend(shortcut_hints::global_bindings());
         (GLOBAL_GROUP.to_string(), hints)
     }

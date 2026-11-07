@@ -40,7 +40,8 @@ Panel layout from `clibase`: tinted header panel with **only** brand + tab bar, 
 
 - **Footer hints** via `ratada::shortcut_hints`, grouped per view into named `HintGroup`s. The **last group is called `Global`** and comes from `App::global_group` – the same helper feeds the footer *and* the help overlay.
 - **Hint band height never as a constant:** `shortcut_hints::height(...)`, additionally capped so the content keeps `MIN_CONTENT_HEIGHT` lines.
-- **Never hardcode `Ctrl+Q` anywhere** – neither in the footer nor in the help nor as a `[keys]` binding. It belongs to the toolkit, as does `F1` (toggle hints).
+- **Never hardcode `Ctrl+Q` anywhere** – neither in the footer nor in the help nor as a `[keys]` binding. It belongs to the toolkit, as does `F1` (toggle hints). `F5` reloads the configuration (`ratada::reload`, through `Interaction::reload_config`); `main` answers the reload signal by saving the session and building everything anew. `Ctrl+R` stays the history search on purpose (the shell convention), the documented exception to the family's key rules.
+- **Settings rows** come from `ratada::form::field` (label column, `*` column, stepper, picker fields); the suggestion dropdown is `Autocomplete::render_popup`. `u` is the one-level undo of `CalcService` (`remember` before every change to history or variables).
 - **Modals block** (`ratada::modal`) and dim the *live* view. A `Ctrl+Q` in a modal quits the app (`Answer::ForcedQuit`).
 - **`Ctrl+C` stays the clipboard** and is never assigned as quit.
 

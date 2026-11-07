@@ -19,7 +19,7 @@ use thiserror::Error;
 
 pub use crate::config::appearance::{Appearance, CALCLI_THEME};
 pub use crate::config::highlight::HighlightColors;
-pub use crate::config::loader::load_config;
+pub use crate::config::loader::{load_config, problems as config_problems};
 use crate::domain::format::{AngleMode, FormatSettings, Notation};
 use crate::keymap::Keymap;
 use crate::theme::{ColorOverrides, Palette, ThemeColors, ThemeRegistry};
