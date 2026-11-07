@@ -139,7 +139,7 @@ Two things the loader is strict about live in their own sections: the colour tab
 
 ## Error messages
 
-`AppError` (`domain/errors.rs`) is the domain's only error type, and each variant's `Display` is exactly what the user reads in the status line and what the history stores for a failed line. Changing the wording is a user-visible change, not a refactor; `every_failure_mode_keeps_its_message` in `services/calc_service.rs` pins all of them.
+`AppError` (`domain/errors.rs`) is the domain's only error type, and each variant's `Display` is exactly what the user reads in the status line and what the history stores for a failed line. Changing the wording is a user-visible change, not a refactor; `every_failure_mode_keeps_its_message` in `services/calc_service/tests.rs` pins all of them.
 
 Two variants differ on purpose: `Calculator` prefixes the evaluator's fragment with "cannot evaluate: ", while `Units` renders rink's message verbatim, because rink already phrases whole sentences that name the offending unit.
 

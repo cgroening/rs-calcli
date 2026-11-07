@@ -90,6 +90,7 @@ Available everywhere. The function keys and `Alt` chords also work while typing,
 | `F6` | toggle trailing-zero trimming |
 | `Ctrl+Y` | copy the last result (plain) |
 | `Ctrl+R` | search the history and recall a line into the input (deliberately not the config reload of the other apps: `Ctrl+R` is the history search of every shell) |
+| `R` | deliberately not bound (the other apps read their data again with it): calcli's only data is its own session – history, variables, settings – which it holds in memory and writes to `state.toml` on quit, so there is nothing outside to read again, and reading the file back would drop the input since the start |
 | `Ctrl+P` | open the command palette (run any action by name) |
 | `F12` / `?` | open the help overlay |
 | `q` | quit (outside the input; use `:q` while typing) |
