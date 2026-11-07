@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use calcli::config::Config;
 use calcli::config::loader::config_from_str;
-use calcli::domain::evaluator::MevalEvaluator;
+use calcli::domain::evaluator::F64Evaluator;
 use calcli::domain::history::{History, HistoryEntry};
 use calcli::domain::quantity::Quantity;
 use calcli::domain::variables::VariableStore;
@@ -141,7 +141,7 @@ fn a_pre_units_session_recomputes_into_the_same_values() {
         })
         .collect();
     let mut service = CalcService::new(
-        Box::new(MevalEvaluator::new()),
+        Box::new(F64Evaluator::new()),
         Config::default().format_settings(),
         History::from_entries(entries, 500),
         variables,

@@ -33,7 +33,7 @@ src/
 
   domain/        pure, no I/O
     errors.rs      AppError: only domain failures
-    evaluator.rs   the Evaluator trait + the meval implementation
+    evaluator/     the Evaluator trait + F64Evaluator (parse.rs: the parser)
     units.rs       the rink-core wrapper (conversion, unit arithmetic)
     expression.rs  preprocessing, `ans`, assignments, comments
     format.rs      how a value is rendered
@@ -44,7 +44,7 @@ src/
 
   services/      orchestration, no I/O
     calc_service.rs   the façade: submit / edit / delete + recompute, settings
-    eval.rs           the evaluation router: meval vs. rink, unit literals
+    eval.rs           the evaluation router: numeric vs. rink, unit literals
     mod.rs            the error funnel: StorageError -> AppError::Storage
 
   storage/       persistence
@@ -141,7 +141,7 @@ Two things the loader is strict about live in their own sections: the colour tab
 
 `AppError` (`domain/errors.rs`) is the domain's only error type, and each variant's `Display` is exactly what the user reads in the status line and what the history stores for a failed line. Changing the wording is a user-visible change, not a refactor; `every_failure_mode_keeps_its_message` in `services/calc_service.rs` pins all of them.
 
-Two variants differ on purpose: `Calculator` prefixes meval's fragment with "cannot evaluate: ", while `Units` renders rink's message verbatim, because rink already phrases whole sentences that name the offending unit.
+Two variants differ on purpose: `Calculator` prefixes the evaluator's fragment with "cannot evaluate: ", while `Units` renders rink's message verbatim, because rink already phrases whole sentences that name the offending unit.
 
 ## On-disk compatibility
 

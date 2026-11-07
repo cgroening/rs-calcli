@@ -1,4 +1,4 @@
-//! Pure string transforms that turn raw user input into a meval-ready
+//! Pure string transforms that turn raw user input into an evaluator-ready
 //! expression, plus the classification of an input line into a [`Statement`].
 //!
 //! Nothing here evaluates or holds state; the service drives the pipeline,
@@ -85,13 +85,13 @@ pub fn classify(input: &str) -> Statement {
     }
 }
 
-/// Turns a raw expression into a meval-ready one: `**`→`^`, lenient separator
+/// Turns a raw expression into an evaluator-ready one: `**`→`^`, lenient separator
 /// normalization and SI-prefix expansion.
 ///
 /// `decimal_separator` is the configured decimal mark; whichever of `.`/`,` is
 /// not the mark is treated (with spaces and `_`) as a thousands separator and
 /// removed. Function arguments are always separated by `;`, which becomes the
-/// meval `,`.
+/// evaluator's `,`.
 pub fn preprocess(expr: &str, decimal_separator: char) -> String {
     let replaced = expr.replace("**", "^");
     let normalized = normalize_separators(&replaced, decimal_separator);

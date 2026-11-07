@@ -11,17 +11,13 @@ use crate::domain::expression::is_si_prefix;
 use crate::domain::units;
 use crate::domain::variables::VariableStore;
 
-/// The known built-in function names (mirrors the meval builtins calcli uses).
-/// Shared with [`crate::domain::completion`] as the single source of the names
-/// the input field can complete to.
-pub(crate) const FUNCTIONS: &[&str] = &[
-    "sqrt", "exp", "ln", "abs", "sin", "cos", "tan", "asin", "acos", "atan",
-    "sinh", "cosh", "tanh", "asinh", "acosh", "atanh", "floor", "ceil",
-    "round", "signum", "atan2", "max", "min",
-];
-
-/// The known built-in constant names.
-pub(crate) const CONSTANTS: &[&str] = &["pi", "e"];
+/// The known built-in function and constant names: the evaluator's, so
+/// highlighting, completion and evaluation never disagree. Shared with
+/// [`crate::domain::completion`] as the names the input field can complete
+/// to.
+pub(crate) use crate::domain::evaluator::{
+    CONSTANT_NAMES as CONSTANTS, FUNCTION_NAMES as FUNCTIONS,
+};
 
 /// The previous-answer keyword.
 pub(crate) const ANS: &str = "ans";

@@ -10,7 +10,7 @@ use log::LevelFilter;
 use ratada::Tui;
 
 use calcli::config::{Config, load_config};
-use calcli::domain::evaluator::MevalEvaluator;
+use calcli::domain::evaluator::F64Evaluator;
 use calcli::domain::format::FormatSettings;
 use calcli::domain::history::{History, HistoryEntry};
 use calcli::domain::quantity::Quantity;
@@ -136,7 +136,7 @@ fn build_service(config: &Config, state: &PersistedState) -> CalcService {
     let history = History::from_entries(entries, config.max_history);
 
     let mut service = CalcService::new(
-        Box::new(MevalEvaluator::new()),
+        Box::new(F64Evaluator::new()),
         settings,
         history,
         variables,

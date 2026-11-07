@@ -118,14 +118,14 @@ impl CalcService {
     ///
     /// ```
     /// use calcli::config::Config;
-    /// use calcli::domain::evaluator::MevalEvaluator;
+    /// use calcli::domain::evaluator::F64Evaluator;
     /// use calcli::domain::history::History;
     /// use calcli::domain::quantity::Quantity;
     /// use calcli::domain::variables::VariableStore;
     /// use calcli::services::CalcService;
     ///
     /// let mut service = CalcService::new(
-    ///     Box::new(MevalEvaluator::new()),
+    ///     Box::new(F64Evaluator::new()),
     ///     Config::default().format_settings(),
     ///     History::new(100),
     ///     VariableStore::new(),
@@ -395,7 +395,7 @@ fn step_index(index: usize, delta: isize, len: usize) -> usize {
 mod tests {
     use super::*;
 
-    use crate::domain::evaluator::MevalEvaluator;
+    use crate::domain::evaluator::F64Evaluator;
     use crate::domain::format::{AngleMode, Notation};
 
     fn settings() -> FormatSettings {
@@ -411,7 +411,7 @@ mod tests {
 
     fn service() -> CalcService {
         CalcService::new(
-            Box::new(MevalEvaluator::new()),
+            Box::new(F64Evaluator::new()),
             settings(),
             History::new(100),
             VariableStore::new(),
@@ -776,7 +776,7 @@ mod tests {
     #[test]
     fn pure_math_is_unaffected_by_the_units_router() {
         let mut service = service();
-        // `e` is a constant (rink knows it too) but must stay on meval.
+        // `e` is a constant (rink knows it too) but must stay numeric.
         assert!((outval(&service.submit("e^0")).unwrap() - 1.0).abs() < 1e-9);
         // `sin` is a function, not a unit, and respects the angle mode.
         service.toggle_angle_mode();
@@ -817,12 +817,12 @@ mod tests {
     }
 
     #[test]
-    fn a_rink_message_is_not_prefixed_like_a_meval_one() {
-        // rink names the offending unit itself; meval yields a fragment.
+    fn a_rink_message_is_not_prefixed_like_a_numeric_one() {
+        // rink names the offending unit itself; the evaluator a fragment.
         let rink = service().submit("1 foounit -> m").error.expect("an error");
         assert!(rink.starts_with("No such unit"), "{rink}");
 
-        let meval = service().submit("2+").error.expect("an error");
-        assert!(meval.starts_with("cannot evaluate: "), "{meval}");
+        let numeric = service().submit("2+").error.expect("an error");
+        assert!(numeric.starts_with("cannot evaluate: "), "{numeric}");
     }
 }

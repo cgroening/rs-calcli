@@ -48,7 +48,7 @@ pub fn demo_state() -> PersistedState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::evaluator::MevalEvaluator;
+    use crate::domain::evaluator::F64Evaluator;
     use crate::domain::history::{History, HistoryEntry};
     use crate::domain::variables::VariableStore;
     use crate::services::CalcService;
@@ -67,7 +67,7 @@ mod tests {
             })
             .collect();
         let mut service = CalcService::new(
-            Box::new(MevalEvaluator::new()),
+            Box::new(F64Evaluator::new()),
             crate::config::Config::default().format_settings(),
             History::from_entries(entries, 500),
             VariableStore::new(),

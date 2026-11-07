@@ -170,7 +170,7 @@ Notation, decimals, angle mode, trailing zeros, the decimal and thousands marks,
 
 ## Expressions
 
-Backed by [`meval`](https://crates.io/crates/meval): `+ - * / ^` (and `**` for power), parentheses, constants `pi`, `e`, and functions such as `sqrt`, `exp`, `ln`, `abs`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`/`cosh`/`tanh`, `floor`, `ceil`, `round`, `min`, `max`, `atan2`. Trig respects the angle mode.
+calcli's own evaluator over `f64`: `+ - * / % ^` (and `**` for power), parentheses, constants `pi`, `e`, and functions such as `sqrt`, `exp`, `ln`, `abs`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`/`cosh`/`tanh`, `floor`, `ceil`, `round`, `min`, `max`, `atan2`. Trig respects the angle mode.
 
 - `ans` – the previous result. A line starting with an operator (e.g. `+5`) continues from it automatically.
 - `=name` – save the previous answer to `name`.
@@ -206,7 +206,7 @@ The session (settings, variables, history and the interface state) is stored in 
 
 Layered, with the composition root in `main.rs` and dependencies pointing inward to `domain`:
 
-- `domain/` – pure core: evaluation (`Evaluator` trait + meval), the `units` engine (rink), expression preprocessing, number formatting, variables, history (and its replay), and the domain error type.
+- `domain/` – pure core: evaluation (`Evaluator` trait + calcli's own `f64` evaluator), the `units` engine (rink), expression preprocessing, number formatting, variables, history (and its replay), and the domain error type.
 - `services/` – `CalcService`: orchestration (submit / edit / delete + recompute, variables, settings). Also the error funnel: a `StorageError` is converted here into a domain error, so nothing below names files or TOML.
 - `storage/` – `StateRepository` port + an atomic TOML implementation.
 - `config/` – `Config`, the appearance/highlight sections and the loader (defaults → TOML → `CALCLI_*`).
@@ -216,7 +216,7 @@ Layered, with the composition root in `main.rs` and dependencies pointing inward
 
 The terminal toolkit (widgets, theming, modals, the event loop, the chord grammar, the clipboard) comes from [`ratada`](../../libs/ratada), so calcli holds no copy of it. The one deliberate exception is `tui/text_edit.rs`: calcli syntax-highlights its input per character, and `ratada`'s text widgets render plain text only. Even there the exception is the rendering – the key rules come from the toolkit.
 
-Dimensionless math runs through the `Evaluator` trait (meval), keeping full `f64` precision and the angle mode; anything involving units is routed to the `domain::units` wrapper around `rink-core`, which owns conversion and unit arithmetic.
+Dimensionless math runs through the `Evaluator` trait (calcli's own `f64` evaluator), keeping full `f64` precision and the angle mode; anything involving units is routed to the `domain::units` wrapper around `rink-core`, which owns conversion and unit arithmetic.
 
 ## Development
 

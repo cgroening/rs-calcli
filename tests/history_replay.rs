@@ -1,7 +1,7 @@
 //! End-to-end check of the `ans` chain and history recomputation through the
 //! public service API.
 
-use calcli::domain::evaluator::MevalEvaluator;
+use calcli::domain::evaluator::F64Evaluator;
 use calcli::domain::format::{AngleMode, FormatSettings, Notation};
 use calcli::domain::history::History;
 use calcli::domain::quantity::Quantity;
@@ -18,7 +18,7 @@ fn service() -> CalcService {
         trim_trailing_zeros: false,
     };
     CalcService::new(
-        Box::new(MevalEvaluator::new()),
+        Box::new(F64Evaluator::new()),
         settings,
         History::new(100),
         VariableStore::new(),

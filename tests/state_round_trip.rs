@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use calcli::config::Config;
-use calcli::domain::evaluator::MevalEvaluator;
+use calcli::domain::evaluator::F64Evaluator;
 use calcli::domain::history::{History, HistoryEntry};
 use calcli::domain::quantity::Quantity;
 use calcli::domain::variables::VariableStore;
@@ -30,7 +30,7 @@ fn temp_path() -> PathBuf {
 fn a_session_survives_save_and_reload() {
     let config = Config::default();
     let mut service = CalcService::new(
-        Box::new(MevalEvaluator::new()),
+        Box::new(F64Evaluator::new()),
         config.format_settings(),
         History::new(config.max_history),
         VariableStore::new(),
@@ -69,7 +69,7 @@ fn a_session_survives_save_and_reload() {
         })
         .collect();
     let mut rebuilt = CalcService::new(
-        Box::new(MevalEvaluator::new()),
+        Box::new(F64Evaluator::new()),
         config.format_settings(),
         History::from_entries(entries, config.max_history),
         VariableStore::from_pairs(loaded.variables.iter().map(

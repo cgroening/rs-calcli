@@ -2,7 +2,7 @@
 //! as.
 //!
 //! A line is classified (`=name`, `name = expr`, plain expression) and then
-//! routed. Dimensionless arithmetic goes to meval, which keeps the functions
+//! routed. Dimensionless arithmetic goes to the numeric evaluator, which keeps the functions
 //! and the angle mode; anything touching units - a conversion, a unit literal,
 //! or arithmetic on a unit-bearing value - goes to rink through
 //! [`crate::domain::units`]. [`needs_units`] is the switch.
@@ -21,7 +21,7 @@ use crate::domain::units;
 use crate::domain::variables::VariableStore;
 
 /// Names that may not be used as variables because they collide with the
-/// previous-answer keyword or meval's built-in constants.
+/// previous-answer keyword or the evaluator's built-in constants.
 const RESERVED_NAMES: &[&str] = &["ans", "pi", "e"];
 
 /// The operators that make an expression a continuation of the previous answer,
@@ -38,7 +38,7 @@ fn continues_from_ans(expr: &str) -> bool {
 /// `render` spells it.
 ///
 /// Shared by both engines: they disagree only on how a value is written down
-/// (rink wants `(50 kN)`, meval a bare number) and on which variables qualify,
+/// (rink wants `(50 kN)`, the evaluator a bare number) and on which variables qualify,
 /// which is what `render` returning `None` expresses.
 fn substitute_variables(
     expr: &str,
@@ -131,7 +131,7 @@ fn assign(
 ///
 /// A sole `ans` or variable reference returns the stored quantity verbatim (so
 /// its unit and full precision survive). Otherwise the line is routed: a
-/// unit-free expression goes to meval (preserving functions and the angle
+/// unit-free expression goes to the numeric evaluator (preserving functions and the angle
 /// mode), while anything involving units - a conversion, a unit literal, or
 /// arithmetic on unit-bearing values - goes to rink (see [`needs_units`]).
 pub(super) fn eval_expression(
@@ -151,11 +151,11 @@ pub(super) fn eval_expression(
     if needs_units(expr, variables, ans.as_ref()) {
         return eval_with_rink(variables, settings, expr, ans);
     }
-    let value = eval_with_meval(evaluator, variables, settings, expr, ans)?;
+    let value = eval_numeric(evaluator, variables, settings, expr, ans)?;
     Ok(Quantity::dimensionless(value))
 }
 
-/// Whether `expr` must be evaluated by the units engine rather than meval.
+/// Whether `expr` must be evaluated by the units engine rather than the numeric evaluator.
 ///
 /// True when it converts (`->`/` to `), continues from a unit-bearing `ans`,
 /// references a unit-bearing variable, or contains a unit symbol. The constants
@@ -303,9 +303,9 @@ fn prepare_units_expr(expr: &str, decimal_separator: char) -> String {
     }
 }
 
-/// Evaluates a dimensionless numeric expression with meval, substituting `ans`
+/// Evaluates a dimensionless numeric expression with the evaluator, substituting `ans`
 /// and dimensionless variables (the router guarantees no units are involved).
-fn eval_with_meval(
+fn eval_numeric(
     evaluator: &dyn Evaluator,
     variables: &VariableStore,
     settings: &FormatSettings,
@@ -320,7 +320,7 @@ fn eval_with_meval(
 
     let prepared = expression::prepend_ans(&prepared, ans_number);
     let prepared = expression::substitute_ans(&prepared, ans_number);
-    // Only dimensionless variables qualify: meval has no notion of a unit, and
+    // Only dimensionless variables qualify: the evaluator has no notion of a unit, and
     // the router has already sent anything unit-bearing to rink.
     let prepared = substitute_variables(&prepared, variables, |value| {
         value
@@ -380,7 +380,7 @@ mod tests {
         assert_eq!(out, "2 + 1");
     }
 
-    /// A `render` returning `None` is how the meval path skips a unit-bearing
+    /// A `render` returning `None` is how the numeric path skips a unit-bearing
     /// variable: the name must survive untouched rather than become garbage.
     #[test]
     fn a_declined_variable_is_left_in_place() {
@@ -412,7 +412,7 @@ mod tests {
     }
 
     /// Rink needs the spaces between a number and its unit, so the units path
-    /// preprocesses more gently than the meval one.
+    /// preprocesses more gently than the numeric one.
     #[test]
     fn the_units_preprocessor_keeps_spaces_and_maps_the_decimal_mark() {
         assert_eq!(prepare_units_expr("2 ** 3", '.'), "2 ^ 3");
@@ -442,7 +442,7 @@ mod tests {
     }
 
     #[test]
-    fn the_router_keeps_bare_arithmetic_and_constants_on_meval() {
+    fn the_router_keeps_bare_arithmetic_and_constants_numeric() {
         let variables = VariableStore::new();
         for expr in ["2 + 3", "sin(pi)", "e^2", "ans * 2"] {
             assert!(!needs_units(expr, &variables, None), "{expr}");
@@ -458,7 +458,7 @@ mod tests {
     /// A dimensionless variable must not drag the line onto the units engine,
     /// even when its name happens to read like a unit symbol.
     #[test]
-    fn a_dimensionless_variable_named_like_a_unit_stays_on_meval() {
+    fn a_dimensionless_variable_named_like_a_unit_stays_numeric() {
         let variables = store(&[("m", Quantity::dimensionless(4.0))]);
         assert!(!needs_units("m * 2", &variables, None));
     }

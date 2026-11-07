@@ -30,8 +30,6 @@ toml = "0.8"
 # Comment-preserving edits of config.toml from the settings view.
 # https://crates.io/crates/toml_edit
 toml_edit = "0.22"
-# https://crates.io/crates/meval - expression parser/evaluator (f64).
-meval = "0.2"
 # https://crates.io/crates/regex - word-boundary variable substitution.
 regex = "1"
 thiserror = "2"

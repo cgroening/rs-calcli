@@ -10,7 +10,7 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
 use crate::config::Config;
-use crate::domain::evaluator::MevalEvaluator;
+use crate::domain::evaluator::F64Evaluator;
 use crate::domain::history::History;
 use crate::domain::quantity::Quantity;
 use crate::domain::variables::VariableStore;
@@ -43,7 +43,7 @@ pub(super) fn app_with(config: &Config) -> App {
 /// An app on `config`, restored from `ui` as a real restart would.
 pub(super) fn app_with_state(config: &Config, ui: &UiState) -> App {
     let service = CalcService::new(
-        Box::new(MevalEvaluator::new()),
+        Box::new(F64Evaluator::new()),
         config.format_settings(),
         History::new(100),
         VariableStore::new(),

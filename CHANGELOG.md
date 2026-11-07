@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **calcli evaluates with its own parser instead of the `meval` crate.** meval has been unmaintained since 2017, and its `nom 1.2.4` dependency triggers a warning that a future Rust turns into an error. The syntax, the results and the error messages stay as they were (a table of expressions, recorded from meval, pins them); `%` (remainder) is now listed in the README.
+
 - **The decimal separator toggles with `F7` (was `F5`).** `F5` reloads the configuration in every app of the family now. A `[keys] decimal_separator = "f5"` override keeps the old key, but then `F5` no longer reloads.
 - **Reset all variables is `X` (was `R`)**, and still asks first. `R` is reserved for reloading data across the app family.
 - The Settings tab follows the form rules: the labels stand in one column, a colour set in `config.toml` carries its `*` in a column of its own before the name (it stood after the value), the focused name is in the accent, a stepped value sits between `←` and `→` (instead of `‹ ›`), and a colour row carries the pointer glyph, because `Enter` opens the chooser. The status band leaves out the settings summary on this tab, which lists the same values.
