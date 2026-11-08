@@ -47,7 +47,7 @@ Panel layout from `clibase`: tinted header panel with **only** brand + tab bar, 
 
 ## Modal keys: scopes
 
-calcli is modal (`Enter` means something different in every context). That is why every `Action` in `keymap.rs` carries a `Scope`; a chord is resolved only in the scopes that are active in the current `Context`. Two bindings collide only when their scopes can be active at the same time – `Action::overlaps` carries that rule into the toolkit's conflict check, which cannot know it.
+calcli is modal (`Enter` means something different in every context). That is why every `Action` in `keymap/catalog.rs` carries a `Scope`; a chord is resolved only in the scopes that are active in the current `Context`. Two bindings collide only when their scopes can be active at the same time – `Action::overlaps` carries that rule into the toolkit's conflict check, which cannot know it.
 
 A **bare printable character never triggers an action** as long as a text field has the keyboard – only that way do `q`, `?`, `y`, `d` stay typable. For the same reason the tab keys are `Alt+1..3` instead of bare digits. The test is `ratada::input::is_bare_character` (re-exported from `keymap.rs`), never a hand-rolled one.
 
