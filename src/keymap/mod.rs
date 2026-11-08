@@ -311,9 +311,14 @@ impl Keymap {
         })
     }
 
-    /// The display strings of the keys bound to `action`.
+    /// The keys bound to `action` in config syntax (`alt+1`).
     pub fn keys_for(&self, action: Action) -> Vec<String> {
         self.inner.keys_for(action)
+    }
+
+    /// The keys bound to `action` as a reader sees them (`Alt+1`, `Enter`).
+    pub fn labels_for(&self, action: Action) -> Vec<String> {
+        self.inner.labels_for(action)
     }
 
     /// Builds `(keys, description)` hint pairs for `actions`, skipping any with
@@ -647,7 +652,7 @@ mod tests {
         let hints = keymap.hints(&[Action::OpenHelp, Action::Quit]);
         assert_eq!(
             hints,
-            vec![("f12/?".to_string(), "help".to_string())],
+            vec![("F12/?".to_string(), "help".to_string())],
             "an unbound action leaves no hint behind",
         );
     }

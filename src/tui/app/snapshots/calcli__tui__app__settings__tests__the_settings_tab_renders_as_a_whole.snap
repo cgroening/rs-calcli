@@ -1,10 +1,9 @@
 ---
 source: src/tui/app/settings.rs
-assertion_line: 201
 expression: "render_rows(&app, 72, 30)"
 ---
 
-  calcli   alt+1 Calc │ alt+2 Variables │ alt+3 Settings
+  calcli   Alt+1 Calc │ Alt+2 Variables │ Alt+3 Settings
 
 
   Notation            ← DEC →                                         █
@@ -25,11 +24,11 @@ expression: "render_rows(&app, 72, 30)"
 
 
 
- Navigation:  up up · down down · pgup page up · pgdn page down
-              home first · end last · esc back
- Change:      left previous · right/enter next
- Settings:    f2 notation · f3 deg/rad · f7 decimal mark
-              f6 trailing zeros
- Views:       alt+1 calc · alt+2/f4 variables · alt+3 settings
- Global:      ctrl+p command palette · f12/? help · q quit
-              f5 reload config · f1 toggle hints · ctrl+q force quit
+ Navigation:  ↑ up · ↓ down · PgUp page up · PgDn page down
+              Home first · End last · Esc back
+ Change:      ← previous · →/Enter next
+ Settings:    F2 notation · F3 deg/rad · F7 decimal mark
+              F6 trailing zeros
+ Views:       Alt+1 calc · Alt+2/F4 variables · Alt+3 settings
+ Global:      Ctrl+P command palette · F12/? help · q quit
+              F5 reload config · F1 toggle hints · Ctrl+Q force quit

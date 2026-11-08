@@ -22,9 +22,9 @@ pub enum ViewId {
 /// text field and a bare digit has to reach it as a character. Keep in step
 /// with the `view_*` actions in [`crate::keymap`].
 const TABS: &[(&str, &str)] = &[
-    ("alt+1", "Calc"),
-    ("alt+2", "Variables"),
-    ("alt+3", "Settings"),
+    ("Alt+1", "Calc"),
+    ("Alt+2", "Variables"),
+    ("Alt+3", "Settings"),
 ];
 
 impl ViewId {
@@ -79,6 +79,6 @@ mod tests {
     fn the_tab_keys_are_alt_digits_so_bare_digits_stay_typeable() {
         let keys: Vec<&str> =
             ViewId::tabs().iter().map(|(key, _)| *key).collect();
-        assert_eq!(keys, vec!["alt+1", "alt+2", "alt+3"]);
+        assert_eq!(keys, vec!["Alt+1", "Alt+2", "Alt+3"]);
     }
 }

@@ -256,10 +256,10 @@ mod tests {
         let (label, hints) = groups.last().expect("a Global group");
         assert_eq!(label, "Global");
         let keys: Vec<&str> = hints.iter().map(|(k, _)| k.as_str()).collect();
-        assert!(keys.contains(&"f12/?"), "help: {keys:?}");
+        assert!(keys.contains(&"F12/?"), "help: {keys:?}");
         assert!(keys.contains(&"q"), "quit: {keys:?}");
-        assert!(keys.iter().any(|k| k.contains("ctrl+q")), "{keys:?}");
-        assert!(keys.iter().any(|k| k.contains("f1")), "{keys:?}");
+        assert!(keys.iter().any(|k| k.contains("Ctrl+Q")), "{keys:?}");
+        assert!(keys.iter().any(|k| k.contains("F1")), "{keys:?}");
     }
 
     #[test]
@@ -278,12 +278,12 @@ mod tests {
         for (label, hints) in &sections[..sections.len() - 1] {
             for (keys, _) in hints {
                 assert!(
-                    !keys.contains("ctrl+q"),
-                    "ctrl+q hardcoded in {label:?}",
+                    !keys.contains("Ctrl+Q"),
+                    "Ctrl+Q hardcoded in {label:?}",
                 );
             }
         }
-        assert!(global.iter().any(|(keys, _)| keys.contains("ctrl+q")));
+        assert!(global.iter().any(|(keys, _)| keys.contains("Ctrl+Q")));
     }
 
     #[test]

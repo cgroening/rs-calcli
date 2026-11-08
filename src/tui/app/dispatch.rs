@@ -275,7 +275,7 @@ impl App {
         // into them for the length of the call.
         let keys: Vec<String> = actions
             .iter()
-            .map(|action| self.keymap.keys_for(*action).join(", "))
+            .map(|action| self.keymap.labels_for(*action).join(", "))
             .collect();
         let items: Vec<CommandItem<'_>> = actions
             .iter()
