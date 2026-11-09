@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **The palette colour `text_selection`** (selected characters in a text field) is listed in the settings and can be set in `[appearance.colors]`; it follows `selection` until set (`ratada`).
+
 ## [0.7.0] - 2026-11-08
 
 ### Changed
